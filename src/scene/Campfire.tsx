@@ -153,8 +153,6 @@ export function CampfireScene({
     };
 
     resize();
-    const observer = new ResizeObserver(resize);
-    observer.observe(canvas);
 
     const start = performance.now();
     let frame = 0;
@@ -240,7 +238,21 @@ export function CampfireScene({
       frame = requestAnimationFrame(render);
     };
 
-    frame = requestAnimationFrame(render);
+    // Paint once, synchronously, before handing over to the animation loop.
+    //
+    // requestAnimationFrame does not fire in a background tab, and some
+    // machines park it in low-power modes too — so a scene that only ever
+    // draws from inside the loop can sit at nothing for as long as the tab is
+    // not being composited. The failure looks exactly like a broken canvas:
+    // correct size, no errors, no picture. One eager frame means the worst
+    // case is a still scene rather than a black hole.
+    render(performance.now());
+
+    const observer = new ResizeObserver(() => {
+      resize();
+      render(performance.now());
+    });
+    observer.observe(canvas);
 
     return () => {
       cancelAnimationFrame(frame);

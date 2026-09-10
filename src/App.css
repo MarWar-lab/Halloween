@@ -343,7 +343,7 @@ select { width: 100%; background: var(--night); color: var(--text);
   to { opacity: 0; transform: translateY(-140px) scale(1); } }
 
 /* ── host ────────────────────────────────────────────────── */
-.host { max-width: 1180px; margin: 0 auto; padding: 26px 22px 80px;
+.host { max-width: 860px; margin: 0 auto; padding: 26px 22px 80px;
   display: flex; flex-direction: column; gap: 18px; }
 .host-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 18px; flex-wrap: wrap; }
 .host-head h1 { font-family: var(--mono); font-size: 34px; letter-spacing: .16em;
@@ -542,12 +542,22 @@ select { width: 100%; background: var(--night); color: var(--text);
   letter-spacing: .16em; text-shadow: 0 3px 16px rgba(0,0,0,.7); }
 .host-clock { position: absolute; top: 12px; right: 16px; }
 
-.host-play { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 18px;
-  align-items: start; margin-top: 16px; }
-.host-card { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
-.host-card .card-big .card-title { font-size: clamp(26px, 3vw, 38px); }
-.host-card .card-big .card-say { font-size: clamp(16px, 1.6vw, 20px); max-width: 52ch; }
-.host-rail { display: flex; flex-direction: column; gap: 14px; }
+/* One column, centred. Answering used to sit in a rail on the far side of a
+   wide screen, so doing one thing meant looking from edge to edge. */
+.host-play { display: flex; flex-direction: column; gap: 16px; margin-top: 16px; }
+.host-play .card-big .card-title { font-size: clamp(26px, 3vw, 40px); }
+.host-play .card-big .card-say { font-size: clamp(17px, 1.7vw, 22px); max-width: 46ch; }
+
+.host-next { display: flex; flex-direction: column; align-items: center; gap: 10px;
+  text-align: center; padding: 4px 0 2px; }
+.host-next-say { margin: 0; font-size: 16px; color: var(--muted); max-width: 48ch; }
+/* One button, unmistakably the button. */
+.btn-hero { min-height: 60px; min-width: min(360px, 100%); font-size: 19px; font-weight: 700; }
+.host-minor { display: flex; gap: 18px; align-items: center; }
+.linkish { background: none; border: 0; padding: 4px; color: var(--muted);
+  font-size: 13px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.linkish:hover { color: var(--text); }
+.host-standing { max-width: 420px; width: 100%; margin: 0 auto; }
 
 /* Tertiary: present, reachable, and visibly not the thing to press. */
 .btn-ghost { background: transparent; border-color: transparent; color: var(--muted); }
@@ -556,10 +566,7 @@ select { width: 100%; background: var(--night); color: var(--text);
 .host-tools { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
   gap: 14px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--edge); }
 
-@media (max-width: 860px) {
-  .host-play { grid-template-columns: 1fr; }
-  .host-stage { height: 34vh; }
-}
+@media (max-width: 860px) { .host-stage { height: 34vh; } }
 .host-hint { position: absolute; left: 14px; bottom: 12px; right: 14px; margin: 0;
   max-width: 46ch; font-size: 13px; color: var(--muted);
   background: rgba(20,16,26,.82); border: 1px solid var(--edge);

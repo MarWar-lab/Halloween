@@ -190,73 +190,87 @@ export function Host({ campfire }: { campfire: Campfire }) {
       )}
 
       <div className="host-play">
-        <div className="host-card">
-          {card && round ? (
-            <>
-              <CardPanel
-                card={card}
-                theme={theme}
-                big
-                subtitle={
-                  round.turnPlayerId
-                    ? `${nameOf(snap.players, round.turnPlayerId)}${round.opponentId ? ` vs ${nameOf(snap.players, round.opponentId)}` : ''}`
-                    : undefined
-                }
-              />
-              <PhaseProgress snapshot={snap} />
-            </>
+        {card && round ? (
+          <>
+            <CardPanel
+              card={card}
+              theme={theme}
+              big
+              subtitle={
+                round.turnPlayerId
+                  ? `${nameOf(snap.players, round.turnPlayerId)}${round.opponentId ? ` vs ${nameOf(snap.players, round.opponentId)}` : ''}`
+                  : undefined
+              }
+            />
+            <PhaseProgress snapshot={snap} />
+          </>
+        ) : (
+          <p className="muted host-empty">
+            {dealsCards
+              ? 'No card in play. Deal one when the room is ready.'
+              : (RUN_OF_SHOW[snap.game.phase]?.say ?? '')}
+          </p>
+        )}
+
+        {/* Answering and voting happen right under the card, not in a column
+            off to the side — the host was looking from one edge of the screen
+            to the other to do one thing. */}
+        <PlayPanel
+          snapshot={snap}
+          backend={backend}
+          hostPlayerId={campfire.session?.playerId ?? null}
+          onError={setProblem}
+        />
+
+        <div className="host-next">
+          <p className="host-next-say">
+            {roundOver && !dealsCards && !lastChapter
+              ? `That is ${PHASE_LABEL[snap.game.phase]} done. Move on when the room is ready.`
+              : roundOver && lastChapter
+                ? 'That is the night. Put the awards on the shared screen.'
+                : roundOver
+                  ? 'Deal the next card when the room is ready.'
+                  : whatNow(round!.phase, round!.mechanic, outstanding(snap))}
+          </p>
+
+          {!roundOver ? (
+            <button className="btn btn-primary btn-hero" disabled={busy} onClick={nextStep}>
+              {nextStepLabel(round!.phase, round!.mechanic)}
+            </button>
+          ) : dealsCards ? (
+            <button className="btn btn-primary btn-hero" disabled={busy} onClick={dealCard}>
+              Deal a card
+            </button>
+          ) : lastChapter ? (
+            <a className="btn btn-primary btn-hero" href={stageUrl} target="_blank" rel="noreferrer">
+              Show the awards
+            </a>
           ) : (
-            <p className="muted host-empty">
-              {dealsCards
-                ? 'No card in play. Deal one when the room is ready.'
-                : (RUN_OF_SHOW[snap.game.phase]?.say ?? '')}
-            </p>
+            <button
+              className="btn btn-primary btn-hero"
+              disabled={busy}
+              onClick={() => void run(advanceChapter)}
+            >
+              Start {PHASE_LABEL[nextGamePhase(snap.game.phase)].toLowerCase()}
+            </button>
           )}
 
-          <div className="host-actions">
-            {!roundOver ? (
-              <button className="btn btn-primary btn-lg" disabled={busy} onClick={nextStep}>
-                {nextStepLabel(round!.phase, round!.mechanic)}
-              </button>
-            ) : dealsCards ? (
-              <button className="btn btn-primary btn-lg" disabled={busy} onClick={dealCard}>
-                Deal a card
-              </button>
-            ) : lastChapter ? (
-              <a className="btn btn-primary btn-lg" href={stageUrl} target="_blank" rel="noreferrer">
-                Show the awards ↗
-              </a>
-            ) : (
-              <button
-                className="btn btn-primary btn-lg"
-                disabled={busy}
-                onClick={() => void run(advanceChapter)}
-              >
-                {PHASE_LABEL[nextGamePhase(snap.game.phase)]} →
-              </button>
-            )}
-
+          {/* Deliberately small and quiet: neither is the thing to press. */}
+          <div className="host-minor">
             {!lastChapter && (dealsCards || !roundOver) && (
-              <button className="btn" disabled={busy} onClick={() => void run(advanceChapter)}>
-                {PHASE_LABEL[nextGamePhase(snap.game.phase)]} →
+              <button className="linkish" disabled={busy} onClick={() => void run(advanceChapter)}>
+                Skip to {PHASE_LABEL[nextGamePhase(snap.game.phase)].toLowerCase()}
               </button>
             )}
-
-            <button className="btn btn-ghost" onClick={() => setToolsOpen((v) => !v)}>
+            <button className="linkish" onClick={() => setToolsOpen((v) => !v)}>
               {toolsOpen ? 'Hide tools' : 'Tools'}
             </button>
           </div>
         </div>
 
-        <aside className="host-rail">
+        <div className="host-standing">
           <Leaderboard players={snap.players} present={snap.present} />
-          <PlayPanel
-            snapshot={snap}
-            backend={backend}
-            hostPlayerId={campfire.session?.playerId ?? null}
-            onError={setProblem}
-          />
-        </aside>
+        </div>
       </div>
 
       {toolsOpen && (
@@ -395,6 +409,45 @@ function nextStepLabel(phase: string, mechanic: string): string {
  * from the answers themselves — the host is not allowed to read a sealed
  * answer, but has to know when everyone has finished writing one.
  */
+/**
+ * What the big button is about to do, in a sentence.
+ *
+ * The console had three buttons of similar weight and no statement of what
+ * came next, so the honest reaction to it was "I don't know which of these to
+ * press". One sentence removes the question.
+ */
+function outstanding(snap: GameSnapshot): number {
+  const round = snap.round;
+  if (!round) return 0;
+  if (round.phase === 'submitting') return snap.players.length - snap.submittedPlayerIds.length;
+  if (round.phase === 'voting') {
+    const excused = [round.turnPlayerId, round.opponentId].filter(Boolean).length;
+    return Math.max(0, snap.players.length - excused - snap.votedPlayerIds.length);
+  }
+  return 0;
+}
+
+function whatNow(phase: string, mechanic: string, waiting: number): string {
+  switch (phase) {
+    case 'choosing':
+      return 'Read the card aloud, then start their clock.';
+    case 'submitting':
+      return waiting > 0
+        ? `Waiting on ${waiting} ${waiting === 1 ? 'person' : 'people'}. Close when you are ready.`
+        : 'Everyone has answered. Close and read them out.';
+    case 'revealing':
+      return 'Read the answers aloud, then open the vote.';
+    case 'performing':
+      return mechanic === 'duel' ? 'Both go, then open the vote.' : 'Let them go, then open the vote.';
+    case 'voting':
+      return waiting > 0
+        ? `Waiting on ${waiting} ${waiting === 1 ? 'vote' : 'votes'}.`
+        : 'Everyone has voted. Score it.';
+    default:
+      return 'Deal the next card when the room is ready.';
+  }
+}
+
 /** The internal phase names are not English. These are. */
 const STEP_LABEL: Record<string, string> = {
   choosing: 'Reading the card',
