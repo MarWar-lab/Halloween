@@ -560,3 +560,8 @@ select { width: 100%; background: var(--night); color: var(--text);
   .host-play { grid-template-columns: 1fr; }
   .host-stage { height: 34vh; }
 }
+.host-hint { position: absolute; left: 14px; bottom: 12px; right: 14px; margin: 0;
+  max-width: 46ch; font-size: 13px; color: var(--muted);
+  background: rgba(20,16,26,.82); border: 1px solid var(--edge);
+  border-radius: var(--r-sm); padding: 9px 12px; }
+.host-hint strong { color: var(--text); }

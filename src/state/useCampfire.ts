@@ -135,11 +135,38 @@ export function useCampfire(): Campfire {
       guard(async () => {
         const backend = backendRef.current;
         if (!backend) throw new Error('Still connecting — try again in a moment.');
+        const tidy = code.trim().toUpperCase();
+
+        // Do we already have a seat here? `resolveCode` only answers for
+        // someone who is already a member, so a non-empty answer means this
+        // device has been at this fire before.
+        //
+        // This matters because a browser holds one anonymous identity for the
+        // whole origin. Open a second tab to try the game out as a friend, and
+        // the server correctly recognises you — and then, because a name came
+        // with the request, renames you to your imaginary friend. One player,
+        // wrong name, no sign of what happened. Rejoining restores the seat
+        // instead; nothing is renamed by accident.
+        const existingGame = await backend.resolveCode(tidy);
+        if (existingGame) {
+          const seat = await backend.resume(existingGame);
+          if (seat.playerId) {
+            setSession({
+              gameId: existingGame,
+              code: tidy,
+              playerId: seat.playerId,
+              isHost: seat.isHost,
+              view: seat.isHost ? 'host' : 'player',
+            });
+            return;
+          }
+        }
+
         const { gameId, playerId } = await backend.joinGame(code, name, look);
         const { isHost } = await backend.resume(gameId);
         setSession({
           gameId,
-          code: code.trim().toUpperCase(),
+          code: tidy,
           playerId,
           isHost,
           view: isHost ? 'host' : 'player',

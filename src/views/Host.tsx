@@ -164,6 +164,16 @@ export function Host({ campfire }: { campfire: Campfire }) {
             Full screen ↗
           </a>
         </div>
+        {snap.players.length === 1 && (
+          // A browser is one person. Trying the game out in a second tab makes
+          // the server recognise you, not meet you, and it is far from obvious
+          // that this is working correctly rather than failing.
+          <p className="host-hint">
+            Nobody else yet. Send the join link — and to try it yourself, open
+            it in a <strong>private window</strong>: a browser can only be one
+            player.
+          </p>
+        )}
         {round && (
           <div className="host-clock">
             <Countdown round={round} />
