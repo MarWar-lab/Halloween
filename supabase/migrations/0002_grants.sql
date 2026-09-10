@@ -31,18 +31,26 @@ to authenticated;
 
 -- Functions are already granted in 0001; repeated here so this file alone is
 -- enough to repair a database where 0001 ran before the grants existed.
-grant execute on function
-  public.create_game(text, text),
-  public.join_game(text, text, jsonb),
-  public.add_proxy(uuid, text, jsonb),
-  public.heartbeat(uuid),
-  public.set_phase(uuid, text, int),
-  public.start_round(uuid, text, text, text, uuid, uuid, text, int),
-  public.advance_round(uuid, text, int),
-  public.submit_answer(uuid, text, uuid),
-  public.cast_vote(uuid, uuid, int, uuid, uuid),
-  public.spend_pass(uuid, uuid),
-  public.award_whim(uuid, int),
-  public.score_round(uuid),
-  public.server_now()
-to authenticated;
+--
+-- Granted by name rather than by signature, over whatever overloads exist. A
+-- literal signature list stops being true the moment a later migration
+-- changes an argument — 0003 adds one to cast_vote — and then this file
+-- fails on a re-run while claiming above that it is safe to re-run.
+do $$
+declare fn record;
+begin
+  for fn in
+    select p.oid::regprocedure as sig
+      from pg_proc p
+      join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public'
+       and p.proname in (
+         'create_game', 'join_game', 'add_proxy', 'heartbeat', 'set_phase',
+         'start_round', 'advance_round', 'submit_answer', 'cast_vote',
+         'spend_pass', 'award_whim', 'score_round', 'server_now',
+         'controls', 'round_submissions', 'round_progress'
+       )
+  loop
+    execute format('grant execute on function %s to authenticated', fn.sig);
+  end loop;
+end $$;

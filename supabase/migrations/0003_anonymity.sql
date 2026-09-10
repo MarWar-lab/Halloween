@@ -101,6 +101,12 @@ $$;
 
 -- ─── 4. casting a vote ──────────────────────────────────────────────────────
 
+-- The old five-argument version has to go, not just be superseded: adding
+-- p_submission creates an *overload*, so both would exist, PostgREST would
+-- have two candidates to choose between, and the buggy one would still be
+-- callable by anything that omitted the new argument.
+drop function if exists public.cast_vote(uuid, uuid, int, uuid, uuid);
+
 create or replace function public.cast_vote(p_round uuid,
                                             p_target uuid default null,
                                             p_score int default null,
@@ -146,10 +152,17 @@ begin
   end if;
 
   if v_mechanic = 'guesswho' then
-    -- The one mechanic where a person votes several times: once per answer.
+    -- The one mechanic where a person votes several times: once per answer,
+    -- so a guess is always *about* an answer.
+    if p_submission is null then
+      raise exception 'a guess has to say which answer it is about';
+    end if;
     insert into votes (round_id, voter_id, submission_id, target_player_id, score, guess_player_id)
     values (p_round, v_voter, p_submission, v_target, p_score, p_guess)
-    on conflict (round_id, voter_id, submission_id)
+    -- The predicate has to be repeated here. Without it Postgres will not
+    -- match the partial unique index and refuses the whole statement with
+    -- 42P10 — at the moment someone changes a guess, mid-round.
+    on conflict (round_id, voter_id, submission_id) where submission_id is not null
     do update set target_player_id = excluded.target_player_id,
                   score = excluded.score,
                   guess_player_id = excluded.guess_player_id;
@@ -184,9 +197,12 @@ begin
   select * into v_round from rounds
    where game_id = p_game order by idx desc limit 1;
 
+  -- Spelled out rather than `v_player in (turn, opponent)`: with a null
+  -- opponent that IN yields null, not false, and null is not a value you
+  -- want deciding whether a round closes.
   if found
      and v_round.results is null
-     and v_player in (v_round.turn_player_id, v_round.opponent_id) then
+     and (v_player = v_round.turn_player_id or v_player = v_round.opponent_id) then
     update rounds
        set phase = 'scored',
            deadline_at = null,
@@ -206,3 +222,7 @@ grant execute on function
   public.cast_vote(uuid, uuid, int, uuid, uuid, uuid),
   public.spend_pass(uuid, uuid)
 to authenticated;
+
+-- PostgREST caches the schema, so without this the new functions are missing
+-- from the API until something else happens to invalidate it.
+notify pgrst, 'reload schema';
