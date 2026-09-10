@@ -50,12 +50,14 @@ interface Seat {
  * behind, half the ring would be the backs of heads, and the whole point is
  * that a person who never turns their camera on still has a visible face here.
  */
-function seatPositions(count: number, w: number, h: number): Seat[] {
+function seatPositions(count: number, w: number, h: number, hasFire: boolean): Seat[] {
   const cx = w / 2;
 
-  // One character is a portrait, not a ring: centre them and stand them at the
-  // front, where the customiser can show them off.
-  if (count === 1) return [{ x: cx, y: h * 0.86, scale: 1, light: 0.7 }];
+  // A lone character with no fire is a portrait — that is the customiser,
+  // where one figure fills the frame. A lone character *with* a fire is the
+  // host waiting for their guests, and centring them puts them behind the
+  // cauldron, so they take a seat at the side like anyone else.
+  if (count === 1 && !hasFire) return [{ x: cx, y: h * 0.86, scale: 1, light: 0.7 }];
   // The ring sits well above the fire: a shallow ellipse reads as a straight
   // line of people, and a fire drawn at the same height swallows whoever is
   // seated directly behind it — which is exactly where the speaker ends up.
@@ -184,7 +186,7 @@ export function CampfireScene({
       if (fire) drawFireGlow(ctx, fireX, fireY, 300 * s * fs * fireBoost, th, t, reduceMotion);
       if (fire) drawSceneDecor(ctx, width, height, th, t, reduceMotion);
 
-      const seats = seatPositions(cast.length, width, height);
+      const seats = seatPositions(cast.length, width, height, fire);
 
       // Painter's algorithm: further up the frame is further away, so it is
       // drawn first and can be overlapped by whoever is nearer.

@@ -1,9 +1,11 @@
 import { useState } from 'react';
 import { deckById } from '../game/decks';
 import { deal } from '../game/deal';
-import { heatCapFor, nextGamePhase, nextRoundPhase, roundFlow } from '../game/machine';
+import { heatCapFor, isPlayingPhase, nextGamePhase, nextRoundPhase, roundFlow } from '../game/machine';
 import { themeById } from '../game/themes';
 import { lookFromSeed } from '../scene/character';
+import { CampfireScene } from '../scene/Campfire';
+import { castFrom, fireScaleFor } from '../scene/cast';
 import type { Backend, GameSnapshot } from '../net';
 import type { Campfire } from '../state/useCampfire';
 import { CardPanel, Countdown, HowToPlay, Leaderboard, cardFor, nameOf } from './shared';
@@ -64,6 +66,7 @@ export function Host({ campfire }: { campfire: Campfire }) {
   const backend = campfire.backend;
   const [proxyName, setProxyName] = useState('');
   const [busy, setBusy] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
   if (!snap || !backend) return <main className="host">Connecting…</main>;
@@ -73,6 +76,10 @@ export function Host({ campfire }: { campfire: Campfire }) {
   const card = cardFor(snap.game.deckId, round?.cardId);
   const roundOver = !round || round.phase === 'scored';
   const guide = RUN_OF_SHOW[snap.game.phase];
+  const dealsCards = isPlayingPhase(snap.game.phase);
+  // Awards is the end of the evening. There is nothing after it, so the
+  // console must not offer a chapter that does not exist.
+  const lastChapter = nextGamePhase(snap.game.phase) === snap.game.phase;
 
   const run = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -101,7 +108,9 @@ export function Host({ campfire }: { campfire: Campfire }) {
       if (!outcome.ok) {
         setProblem(
           outcome.reason === 'not-a-playing-phase'
-            ? `No cards are dealt during ${PHASE_LABEL[snap.game.phase]}. Move to the next chapter first.`
+            ? lastChapter
+              ? 'The game is over — this is the awards screen. Start a new one to play again.'
+              : `No cards are dealt during ${PHASE_LABEL[snap.game.phase]}. Move on to ${PHASE_LABEL[nextGamePhase(snap.game.phase)]} first.`
             : outcome.reason === 'too-few-players'
               ? 'Not enough people at the fire for that.'
               : `Every card at heat ${snap.game.heatCap} and below has been played. Raise the dial or move on.`,
@@ -124,29 +133,43 @@ export function Host({ campfire }: { campfire: Campfire }) {
       );
     });
 
+  const advanceChapter = async () => {
+    const phase = nextGamePhase(snap.game.phase);
+    if (phase === snap.game.phase) return;
+    await backend.setPhase(snap.game.id, phase, heatCapFor(phase));
+  };
+
   const shareUrl = `${window.location.origin}${window.location.pathname}?c=${snap.game.code}`;
   const stageUrl = `${shareUrl}&v=stage`;
 
   return (
+    // The fire first. This screen used to open on four panels of grey admin
+    // with the game itself behind a text link, and the first thing a host saw
+    // of their own Halloween party was a form. Everything that is not the
+    // scene, the card, or the single next action now lives behind one button.
     <main className="host">
-      <header className="host-head">
-        <div>
-          <span className="eyebrow">Host console · {PHASE_LABEL[snap.game.phase]}</span>
-          <h1>
-            {snap.game.code}
-            <button
-              className="btn btn-sm copy"
-              onClick={() => void navigator.clipboard?.writeText(shareUrl)}
-            >
-              Copy join link
-            </button>
-            <a className="btn btn-sm" href={stageUrl} target="_blank" rel="noreferrer">
-              Open Stage ↗
-            </a>
-          </h1>
+      <div className="host-stage">
+        <CampfireScene
+          characters={castFrom(snap)}
+          theme={theme}
+          fireScale={fireScaleFor(snap.game.phase)}
+          className="host-canvas"
+        />
+        <div className="host-code">
+          <strong>{snap.game.code}</strong>
+          <button className="btn btn-sm" onClick={() => void navigator.clipboard?.writeText(shareUrl)}>
+            Copy join link
+          </button>
+          <a className="btn btn-sm" href={stageUrl} target="_blank" rel="noreferrer">
+            Full screen ↗
+          </a>
         </div>
-        {round && <Countdown round={round} />}
-      </header>
+        {round && (
+          <div className="host-clock">
+            <Countdown round={round} />
+          </div>
+        )}
+      </div>
 
       {problem && <p className="form-error">{problem}</p>}
       {campfire.connection?.fellBackFrom && (
@@ -156,21 +179,14 @@ export function Host({ campfire }: { campfire: Campfire }) {
         </p>
       )}
 
-      <div className="host-grid">
-        <section className="host-main">
-          {guide && (
-            <div className="run-of-show">
-              <span className="eyebrow">{PHASE_LABEL[snap.game.phase]} — what to do</span>
-              <p className="ros-say">{guide.say}</p>
-              <p className="ros-then muted small">{guide.then}</p>
-            </div>
-          )}
-
+      <div className="host-play">
+        <div className="host-card">
           {card && round ? (
             <>
               <CardPanel
                 card={card}
                 theme={theme}
+                big
                 subtitle={
                   round.turnPlayerId
                     ? `${nameOf(snap.players, round.turnPlayerId)}${round.opponentId ? ` vs ${nameOf(snap.players, round.opponentId)}` : ''}`
@@ -180,38 +196,71 @@ export function Host({ campfire }: { campfire: Campfire }) {
               <PhaseProgress snapshot={snap} />
             </>
           ) : (
-            <p className="muted host-empty">No card in play. Deal one when the room is ready.</p>
+            <p className="muted host-empty">
+              {dealsCards
+                ? 'No card in play. Deal one when the room is ready.'
+                : (RUN_OF_SHOW[snap.game.phase]?.say ?? '')}
+            </p>
           )}
 
-          {/* One obvious next action. The other two are secondary on purpose:
-              a console with three equally-weighted buttons makes the host
-              hesitate, and the room reads the hesitation. */}
           <div className="host-actions">
-            {roundOver ? (
-              <button className="btn btn-primary btn-lg" disabled={busy} onClick={dealCard}>
-                Deal a card
-              </button>
-            ) : (
+            {!roundOver ? (
               <button className="btn btn-primary btn-lg" disabled={busy} onClick={nextStep}>
                 {nextStepLabel(round!.phase, round!.mechanic)}
               </button>
+            ) : dealsCards ? (
+              <button className="btn btn-primary btn-lg" disabled={busy} onClick={dealCard}>
+                Deal a card
+              </button>
+            ) : lastChapter ? (
+              <a className="btn btn-primary btn-lg" href={stageUrl} target="_blank" rel="noreferrer">
+                Show the awards ↗
+              </a>
+            ) : (
+              <button
+                className="btn btn-primary btn-lg"
+                disabled={busy}
+                onClick={() => void run(advanceChapter)}
+              >
+                {PHASE_LABEL[nextGamePhase(snap.game.phase)]} →
+              </button>
             )}
-            <button
-              className="btn"
-              disabled={busy}
-              onClick={() =>
-                void run(async () => {
-                  const phase = nextGamePhase(snap.game.phase);
-                  await backend.setPhase(snap.game.id, phase, heatCapFor(phase));
-                })
-              }
-            >
-              {PHASE_LABEL[nextGamePhase(snap.game.phase)]} →
+
+            {!lastChapter && (dealsCards || !roundOver) && (
+              <button className="btn" disabled={busy} onClick={() => void run(advanceChapter)}>
+                {PHASE_LABEL[nextGamePhase(snap.game.phase)]} →
+              </button>
+            )}
+
+            <button className="btn btn-ghost" onClick={() => setToolsOpen((v) => !v)}>
+              {toolsOpen ? 'Hide tools' : 'Tools'}
             </button>
           </div>
+        </div>
 
-          <div className="heat-dial">
-            <span className="eyebrow">Courage dial</span>
+        <aside className="host-rail">
+          <Leaderboard players={snap.players} present={snap.present} />
+          <PlayPanel
+            snapshot={snap}
+            backend={backend}
+            hostPlayerId={campfire.session?.playerId ?? null}
+            onError={setProblem}
+          />
+        </aside>
+      </div>
+
+      {toolsOpen && (
+        <div className="host-tools">
+          {guide && (
+            <div className="panel">
+              <h3>{PHASE_LABEL[snap.game.phase]} — what to do</h3>
+              <p className="ros-say">{guide.say}</p>
+              <p className="muted small">{guide.then}</p>
+            </div>
+          )}
+
+          <div className="panel">
+            <h3>Courage dial</h3>
             <div className="seg" role="group" aria-label="Maximum heat">
               {([1, 2, 3] as const).map((h) => (
                 <button
@@ -229,29 +278,10 @@ export function Host({ campfire }: { campfire: Campfire }) {
               {snap.game.heatCap === 3 && 'Entrances and reenactments. Volunteers only.'}
             </p>
           </div>
-        </section>
-
-        <aside className="host-side">
-          <div className="panel">
-            <h3>Everyone ({snap.players.length})</h3>
-            <Leaderboard players={snap.players} present={snap.present} />
-          </div>
-
-          <PlayPanel
-            snapshot={snap}
-            backend={backend}
-            hostPlayerId={campfire.session?.playerId ?? null}
-            onError={setProblem}
-          />
-
-          <AtmospherePanel snapshot={snap} backend={backend} />
 
           <div className="panel">
             <h3>The Whim</h3>
-            <p className="muted small">
-              One arbitrary bonus point per round, for a reason that must be announced and must
-              make no sense.
-            </p>
+            <p className="muted small">One bonus point, for a reason that must make no sense.</p>
             <div className="whim-grid">
               {snap.players.map((p) => (
                 <button
@@ -267,10 +297,9 @@ export function Host({ campfire }: { campfire: Campfire }) {
           </div>
 
           <div className="panel">
-            <h3>Add someone without a device</h3>
+            <h3>Playing without a device</h3>
             <p className="muted small">
-              They play through your screen; you enter their answers and votes. They appear at the
-              fire like anyone else.
+              They play through your screen and appear at the fire like anyone else.
             </p>
             <div className="proxy-add">
               <input
@@ -293,11 +322,13 @@ export function Host({ campfire }: { campfire: Campfire }) {
             </div>
           </div>
 
+          <AtmospherePanel snapshot={snap} backend={backend} />
+
           <div className="panel">
             <HowToPlay theme={theme} />
           </div>
-        </aside>
-      </div>
+        </div>
+      )}
     </main>
   );
 }
@@ -354,6 +385,16 @@ function nextStepLabel(phase: string, mechanic: string): string {
  * from the answers themselves — the host is not allowed to read a sealed
  * answer, but has to know when everyone has finished writing one.
  */
+/** The internal phase names are not English. These are. */
+const STEP_LABEL: Record<string, string> = {
+  choosing: 'Reading the card',
+  performing: 'Their turn',
+  submitting: 'Writing',
+  revealing: 'Reading out',
+  voting: 'Voting',
+  scored: 'Scored',
+};
+
 function PhaseProgress({ snapshot }: { snapshot: GameSnapshot }) {
   const round = snapshot.round;
   if (!round) return null;
@@ -386,7 +427,7 @@ function PhaseProgress({ snapshot }: { snapshot: GameSnapshot }) {
       <ol>
         {flow.map((p, i) => (
           <li key={p} className={i === at ? 'now' : i < at ? 'done' : undefined}>
-            {p}
+            {STEP_LABEL[p] ?? p}
           </li>
         ))}
       </ol>
@@ -451,7 +492,7 @@ function PlayPanel({
 
   return (
     <div className="panel">
-      <h3>{round.phase === 'submitting' ? 'Answers from this screen' : 'Votes from this screen'}</h3>
+      <h3>{round.phase === 'submitting' ? 'Your answer' : 'Your vote'}</h3>
 
       {controlled.map((player) => {
         const done =

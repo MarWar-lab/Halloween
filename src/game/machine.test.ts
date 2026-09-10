@@ -7,9 +7,11 @@ import {
   nextGamePhase,
   nextRoundPhase,
   nextTurnPlayer,
+  isPlayingPhase,
   roundFlow,
 } from './machine';
 import { deckById, deviceFreeCountByHeat, draw, eligible } from './decks';
+import type { GamePhase } from './types';
 import type { Heat } from './types';
 
 describe('game phases', () => {
@@ -151,3 +153,22 @@ describe('deck integrity', () => {
     expect(only.every((c) => c.mechanic === 'duel')).toBe(true);
   });
 });
+
+describe('the end of the evening', () => {
+  it('has nowhere to go after the awards', () => {
+    // The console used to offer "next chapter" here, and tell a stuck host to
+    // "move to the next chapter first" when there was none. Both are dead ends
+    // at the exact moment the evening is meant to land well.
+    expect(nextGamePhase('awards')).toBe('awards');
+    expect(isPlayingPhase('awards')).toBe(false);
+  });
+
+  it('deals no cards in the chapters that are not for playing', () => {
+    for (const phase of ['lobby', 'briefing', 'intermission', 'awards'] as GamePhase[]) {
+      expect(isPlayingPhase(phase)).toBe(false);
+    }
+    for (const phase of ['warmup', 'round1', 'round2', 'finale'] as GamePhase[]) {
+      expect(isPlayingPhase(phase)).toBe(true);
+    }
+  });
+})
