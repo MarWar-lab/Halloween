@@ -61,7 +61,7 @@ export const campfire: Theme = {
     points: 'points',
     stage: 'Campfire',
   },
-  toppers: ['none', 'beanie', 'curls', 'cap', 'bun', 'bald'],
+  toppers: ['none', 'hood', 'beanie', 'cap', 'bun', 'curls', 'woolly', 'none'],
   accessories: ['none', 'mug', 'blanket', 'glasses', 'marshmallow'],
 };
 
@@ -89,7 +89,9 @@ export const halloween: Theme = {
     points: 'points',
     stage: 'The Séance',
   },
-  toppers: ['none', 'witch hat', 'bandages', 'sheet', 'pumpkin', 'horns'],
+  // Full costumes, not hats: the renderer changes body shape for some of
+  // these (a sheet ghost has no legs and hovers).
+  toppers: ['witch', 'pumpkin', 'ghost', 'mummy', 'devil', 'skull', 'vampire', 'hood'],
   accessories: ['none', 'candle', 'cauldron', 'lantern', 'raven'],
 };
 

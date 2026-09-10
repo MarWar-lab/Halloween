@@ -1,12 +1,19 @@
 /**
- * Procedural characters. No image assets — every character is drawn from a
- * handful of numbers, so a theme is a palette swap and the repo stays clean.
+ * Procedural characters — an articulated rig, drawn to canvas.
  *
- * The visual language is deliberately chunky: big flat shapes, thick outlines,
- * few internal details. That is not only a style choice. Half of this canvas is
- * screen-shared into a video call, and video compression destroys fine detail
- * and high-frequency motion while leaving large flat areas of colour intact.
- * The aesthetic and the delivery channel happen to want the same thing.
+ * The rig follows the same idea as the IOTA FightClub sprite: a table of
+ * keyframes per state, where each frame is a set of joint rotations, and limbs
+ * are drawn as groups rotating about fixed pivots. Hair and cloaks lag one
+ * frame behind the body, which is what sells them as cloth rather than
+ * cardboard.
+ *
+ * Canvas rather than SVG because twenty of these animate at once around the
+ * fire; twenty articulated SVG rigs re-rendering through React would not hold
+ * frame rate. The trade is that everything here is hand-drawn geometry.
+ *
+ * Still deliberately chunky and high-contrast: half of this is screen-shared
+ * into a video call, and compression destroys fine detail while leaving big
+ * flat shapes intact.
  */
 
 import type { CharacterLook } from '../game/types';
@@ -22,30 +29,85 @@ export type CharState =
   | 'passed'
   | 'winner';
 
-export const BODY_TONES = [
-  '#F2C9A0',
-  '#DCA679',
-  '#B87F4E',
-  '#8A5A30',
-  '#5E3A20',
-  '#3D2717',
-];
+/**
+ * Keyframes: [bodyY, bodyRot, rArm, lArm, rLeg, lLeg, headX, headY, hairRot, cloakRot]
+ * Rotations in degrees. Arms pivot at the shoulders, legs at the hips.
+ */
+const FRAMES: Record<CharState, number[][]> = {
+  idle: [
+    [0, 0, -8, 8, 0, 0, 0, 0, 0, 0],
+    [-1, 0, -10, 10, 0, 0, 0, -1, 1.5, 2],
+    [-2, 0, -9, 9, 0, 0, 0, -2, 0, 3],
+    [-1, 0, -7, 7, 0, 0, 0, -1, -1.5, 1],
+  ],
+  listening: [
+    [0, -3, -6, 11, 0, 0, -2, 0, 0, -1],
+    [-1, -3, -7, 12, 0, 0, -3, -1, 1, 0],
+    [-2, -4, -6, 11, 0, 0, -3, -1, 0, 1],
+    [-1, -3, -5, 10, 0, 0, -2, 0, -1, 0],
+  ],
+  speaking: [
+    [0, 0, -22, 14, 0, 0, 0, -1, 2, 2],
+    [-2, 2, -38, 22, 0, 0, 1, -2, 4, 6],
+    [0, -1, -18, 10, 0, 0, 0, 0, -2, 0],
+    [-2, 1, -32, 26, 0, 0, 0, -2, 3, 5],
+  ],
+  laughing: [
+    [-3, -4, -26, 26, 0, 0, 0, -3, -4, -3],
+    [-7, -6, -34, 34, 0, 0, 0, -7, -7, -6],
+    [-3, -4, -26, 26, 0, 0, 0, -3, -4, -3],
+    [-1, -2, -20, 20, 0, 0, 0, -1, -2, -1],
+  ],
+  shocked: [
+    [2, -8, -52, 52, 4, -4, -3, 1, -6, -9],
+    [1, -10, -62, 62, 5, -5, -4, 0, -8, -11],
+  ],
+  voting: [
+    [0, 0, -112, 10, 0, 0, 0, -1, 3, 2],
+    [-1, 0, -118, 12, 0, 0, 0, -2, 4, 3],
+  ],
+  passed: [
+    [4, 7, 12, -8, 0, 0, 3, 3, 6, 7],
+    [5, 8, 14, -6, 0, 0, 4, 4, 7, 8],
+  ],
+  winner: [
+    [-4, 0, -136, 136, 3, -3, 0, -4, 7, 9],
+    [-11, 0, -142, 142, 7, -7, 0, -9, 10, 13],
+    [-4, 0, -134, 134, 3, -3, 0, -4, 7, 9],
+    [0, 0, -130, 130, 0, 0, 0, -1, 5, 7],
+  ],
+};
+
+/** Milliseconds per frame, per state. */
+const FRAME_MS: Record<CharState, number> = {
+  idle: 420,
+  listening: 460,
+  speaking: 150,
+  laughing: 130,
+  shocked: 320,
+  voting: 400,
+  passed: 700,
+  winner: 160,
+};
+
+export const BODY_TONES = ['#F2C9A0', '#DCA679', '#B87F4E', '#8A5A30', '#5E3A20', '#3D2717'];
 
 export const TOP_COLOURS = [
-  '#C9463C',
-  '#4F7FBF',
-  '#5AA05F',
-  '#B45FA0',
-  '#E0A93C',
-  '#5FBFC7',
-  '#8B6FD6',
-  '#D8734A',
+  '#8B2635', // dried blood
+  '#3D5A80', // midnight blue
+  '#4A7C4E', // swamp green
+  '#6B3FA0', // witch purple
+  '#C4642A', // pumpkin
+  '#2F6F73', // ghoul teal
+  '#7A2E5C', // plum
+  '#B5651D', // rust
 ];
 
-const OUTLINE = '#150F1B';
+const OUTLINE = '#0E0912';
+const EYE_WHITE = '#F6F1E4';
 
-/** Deterministic look from a name, so a player always gets the same character
- *  before they touch the customiser — and the same one again after a refresh. */
+/** Deterministic look from a name — the same character before and after a
+ *  refresh, and before anyone touches the customiser. */
 export function lookFromSeed(seed: string): CharacterLook {
   let h = 2166136261;
   for (let i = 0; i < seed.length; i += 1) {
@@ -55,7 +117,7 @@ export function lookFromSeed(seed: string): CharacterLook {
   const n = (shift: number, mod: number) => Math.abs((h >> shift) % mod);
   return {
     body: n(0, BODY_TONES.length),
-    topper: n(5, 6),
+    topper: n(5, 8),
     top: n(11, TOP_COLOURS.length),
     accessory: n(17, 5),
   };
@@ -63,330 +125,686 @@ export function lookFromSeed(seed: string): CharacterLook {
 
 export interface DrawCharacterOptions {
   x: number;
+  /** Ground line — the character's feet. */
   y: number;
-  /** 1 = a character about 120px tall. */
+  /** 1 ≈ a 150px-tall character. */
   scale: number;
   look: CharacterLook;
   state: CharState;
-  /** Seconds since scene start; drives all animation. */
+  /** Seconds since scene start. */
   t: number;
   theme: Theme;
-  /** Per-character phase offset so a crowd doesn't breathe in unison. */
+  /** Per-character offset so a crowd doesn't move in lockstep. */
   phase: number;
-  /** 0-1. Characters further from the fire sit in less light. */
+  /** 0-1, how much firelight reaches them. */
   light: number;
-  /** Dim a player who has disconnected. */
   away?: boolean;
   reduceMotion?: boolean;
 }
 
+const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
+const rad = (deg: number) => (deg * Math.PI) / 180;
+
 export function drawCharacter(ctx: CanvasRenderingContext2D, o: DrawCharacterOptions) {
   const { x, y, scale, look, state, theme, phase, light } = o;
-  const t = o.reduceMotion ? 0 : o.t;
 
-  const bodyColour = BODY_TONES[look.body % BODY_TONES.length];
-  const topColour = TOP_COLOURS[look.top % TOP_COLOURS.length];
+  const frames = FRAMES[state] ?? FRAMES.idle;
+  const ms = FRAME_MS[state] ?? 400;
 
-  // Breathing, and a bigger bob when they're the one talking.
-  const breathe = Math.sin(t * 1.6 + phase) * 1.2;
-  const bob =
-    state === 'speaking' ? Math.sin(t * 6 + phase) * 2.5
-    : state === 'laughing' ? Math.abs(Math.sin(t * 9 + phase)) * 5
-    : 0;
-  const lean = state === 'passed' ? 6 : state === 'shocked' ? -4 : 0;
+  // Interpolate between keyframes so the rig reads as animation rather than a
+  // slideshow, and hold frame 0 when motion is reduced.
+  let f = frames[0];
+  let prev = frames[0];
+  if (!o.reduceMotion) {
+    const pos = ((o.t * 1000 + phase * 220) / ms) % frames.length;
+    const i = Math.floor(pos);
+    const k = pos - i;
+    const a = frames[i];
+    const b = frames[(i + 1) % frames.length];
+    f = a.map((v, n) => lerp(v, b[n], k));
+    // Hair and cloak trail the body by roughly one frame.
+    prev = frames[(i - 1 + frames.length) % frames.length];
+  }
+
+  const [by, br, rArm, lArm, rLeg, lLeg, hx, hy] = f;
+  const hairRot = prev[8];
+  const cloakRot = prev[9];
+
+  const skin = BODY_TONES[look.body % BODY_TONES.length];
+  const cloth = TOP_COLOURS[look.top % TOP_COLOURS.length];
+  const costume = theme.toppers[look.topper % theme.toppers.length];
 
   ctx.save();
-  ctx.translate(x, y - bob - breathe);
+  ctx.translate(x, y);
   ctx.scale(scale, scale);
-  ctx.globalAlpha = o.away ? 0.38 : 1;
-
+  ctx.globalAlpha = o.away ? 0.32 : 1;
   ctx.lineJoin = 'round';
   ctx.lineCap = 'round';
-  ctx.strokeStyle = OUTLINE;
-  ctx.lineWidth = 3;
 
-  // ── seated body: a rounded trapezoid, wider at the base ──────────────────
-  ctx.save();
-  ctx.translate(0, lean * 0.4);
-  ctx.rotate((lean * Math.PI) / 180);
-
+  // Contact shadow — without it everyone floats.
   ctx.beginPath();
-  ctx.moveTo(-16, 0);
-  ctx.quadraticCurveTo(-22, -18, -13, -30);
-  ctx.lineTo(13, -30);
-  ctx.quadraticCurveTo(22, -18, 16, 0);
-  ctx.closePath();
-  ctx.fillStyle = topColour;
+  ctx.ellipse(0, 2, 22, 6, 0, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.42)';
   ctx.fill();
-  ctx.stroke();
 
-  // ── arms ─────────────────────────────────────────────────────────────────
-  const armUp = state === 'winner' || state === 'voting';
-  ctx.beginPath();
-  if (armUp) {
-    ctx.moveTo(-13, -24);
-    ctx.lineTo(-20, -42);
-    ctx.moveTo(13, -24);
-    ctx.lineTo(20, -42);
-  } else if (state === 'shocked') {
-    ctx.moveTo(-13, -24);
-    ctx.lineTo(-19, -34);
-    ctx.moveTo(13, -24);
-    ctx.lineTo(19, -34);
+  ctx.translate(0, by);
+  ctx.rotate(rad(br));
+
+  const ghost = costume === 'ghost';
+
+  if (ghost) {
+    drawGhostBody(ctx, cloth, cloakRot);
   } else {
-    ctx.moveTo(-14, -22);
-    ctx.lineTo(-18, -8);
-    ctx.moveTo(14, -22);
-    ctx.lineTo(18, -8);
-  }
-  ctx.lineWidth = 6;
-  ctx.strokeStyle = topColour;
-  ctx.stroke();
-  ctx.lineWidth = 3;
-  ctx.strokeStyle = OUTLINE;
-  ctx.stroke();
-
-  // A voting paddle, so a silent vote is still visible in the scene.
-  if (state === 'voting') {
-    ctx.beginPath();
-    ctx.roundRect(-30, -58, 20, 16, 3);
-    ctx.fillStyle = theme.palette.text;
-    ctx.fill();
-    ctx.stroke();
+    drawCloak(ctx, costume, cloth, cloakRot);
+    drawLeg(ctx, -8, rLeg, cloth);
+    drawLeg(ctx, 8, lLeg, cloth);
+    drawArm(ctx, -15, lArm, cloth, skin, state === 'voting');
+    drawTorso(ctx, costume, cloth);
+    drawArm(ctx, 15, rArm, cloth, skin, false);
   }
 
-  // ── head ─────────────────────────────────────────────────────────────────
-  ctx.beginPath();
-  ctx.ellipse(0, -44, 17, 16, 0, 0, Math.PI * 2);
-  ctx.fillStyle = bodyColour;
-  ctx.fill();
-  ctx.stroke();
-
-  drawFace(ctx, state, t, phase);
-  drawTopper(ctx, look.topper, theme, topColour);
-
+  // ── head ────────────────────────────────────────────────────────────────
+  ctx.save();
+  ctx.translate(hx, hy - (ghost ? 4 : 0));
+  drawHead(ctx, costume, skin, cloth, state, o.t, phase, hairRot, o.reduceMotion);
   ctx.restore();
 
-  // ── firelight: a warm wash from below-left, stronger nearer the fire ──────
+  // ── firelight wash from below ───────────────────────────────────────────
   if (light > 0.02) {
     ctx.globalCompositeOperation = 'overlay';
-    ctx.globalAlpha = Math.min(0.5, light) * (o.away ? 0.3 : 1);
-    const glow = ctx.createRadialGradient(0, -20, 2, 0, -20, 46);
+    ctx.globalAlpha = Math.min(0.55, light) * (o.away ? 0.3 : 1);
+    const glow = ctx.createRadialGradient(0, -30, 4, 0, -20, 80);
     glow.addColorStop(0, theme.palette.ember);
     glow.addColorStop(1, 'transparent');
     ctx.fillStyle = glow;
-    ctx.beginPath();
-    ctx.arc(0, -20, 46, 0, Math.PI * 2);
-    ctx.fill();
+    ctx.fillRect(-60, -140, 120, 150);
     ctx.globalCompositeOperation = 'source-over';
   }
 
   ctx.restore();
 }
 
-function drawFace(ctx: CanvasRenderingContext2D, state: CharState, t: number, phase: number) {
-  // Blink: a short close on an irregular cycle so a crowd doesn't blink together.
-  const cycle = (t * 0.9 + phase) % 4;
-  const blinking = cycle > 3.85;
+// ── body parts ────────────────────────────────────────────────────────────
+
+function stroke(ctx: CanvasRenderingContext2D, width = 2.6) {
+  ctx.lineWidth = width;
+  ctx.strokeStyle = OUTLINE;
+  ctx.stroke();
+}
+
+function drawTorso(ctx: CanvasRenderingContext2D, costume: string, cloth: string) {
+  ctx.beginPath();
+  ctx.moveTo(-15, -46);
+  ctx.quadraticCurveTo(-17, -74, -13, -86);
+  ctx.lineTo(13, -86);
+  ctx.quadraticCurveTo(17, -74, 15, -46);
+  ctx.closePath();
+  ctx.fillStyle = cloth;
+  ctx.fill();
+  stroke(ctx);
+
+  // Belt
+  ctx.beginPath();
+  ctx.rect(-15, -52, 30, 7);
+  ctx.fillStyle = '#241A22';
+  ctx.fill();
+  stroke(ctx, 1.6);
+
+  if (costume === 'skeleton') {
+    // Ribs, painted on.
+    ctx.strokeStyle = '#E8E0CE';
+    ctx.lineWidth = 2;
+    for (let i = 0; i < 3; i += 1) {
+      ctx.beginPath();
+      ctx.moveTo(-9, -78 + i * 8);
+      ctx.quadraticCurveTo(0, -74 + i * 8, 9, -78 + i * 8);
+      ctx.stroke();
+    }
+    ctx.beginPath();
+    ctx.moveTo(0, -84);
+    ctx.lineTo(0, -56);
+    ctx.stroke();
+  }
+
+  if (costume === 'mummy') {
+    ctx.strokeStyle = 'rgba(20,14,24,0.35)';
+    ctx.lineWidth = 1.6;
+    for (let i = 0; i < 5; i += 1) {
+      ctx.beginPath();
+      ctx.moveTo(-15, -80 + i * 8);
+      ctx.lineTo(15, -76 + i * 8);
+      ctx.stroke();
+    }
+  }
+}
+
+function drawArm(
+  ctx: CanvasRenderingContext2D,
+  shoulderX: number,
+  rotation: number,
+  cloth: string,
+  skin: string,
+  holdingPaddle: boolean,
+) {
+  ctx.save();
+  ctx.translate(shoulderX, -82);
+  ctx.rotate(rad(rotation));
+
+  ctx.beginPath();
+  ctx.roundRect(-4.5, 0, 9, 30, 4.5);
+  ctx.fillStyle = cloth;
+  ctx.fill();
+  stroke(ctx, 2.2);
+
+  ctx.beginPath();
+  ctx.arc(0, 33, 6, 0, Math.PI * 2);
+  ctx.fillStyle = skin;
+  ctx.fill();
+  stroke(ctx, 2);
+
+  // A voting paddle, so a silent vote is still visible across the fire.
+  if (holdingPaddle) {
+    ctx.beginPath();
+    ctx.roundRect(-9, 36, 18, 14, 3);
+    ctx.fillStyle = '#EFE6D6';
+    ctx.fill();
+    stroke(ctx, 2);
+  }
+
+  ctx.restore();
+}
+
+function drawLeg(ctx: CanvasRenderingContext2D, hipX: number, rotation: number, cloth: string) {
+  ctx.save();
+  ctx.translate(hipX, -46);
+  ctx.rotate(rad(rotation));
+
+  ctx.beginPath();
+  ctx.roundRect(-5.5, 0, 11, 40, 5);
+  ctx.fillStyle = shade(cloth, -0.45);
+  ctx.fill();
+  stroke(ctx, 2.2);
+
+  ctx.beginPath();
+  ctx.ellipse(1, 42, 8, 5, 0, 0, Math.PI * 2);
+  ctx.fillStyle = '#191219';
+  ctx.fill();
+  stroke(ctx, 1.8);
+
+  ctx.restore();
+}
+
+/** Witch and vampire cloaks, trailing one frame behind the body. */
+function drawCloak(
+  ctx: CanvasRenderingContext2D,
+  costume: string,
+  cloth: string,
+  rotation: number,
+) {
+  if (costume !== 'witch' && costume !== 'vampire') return;
+
+  ctx.save();
+  ctx.translate(0, -86);
+  ctx.rotate(rad(rotation * 0.6));
+
+  ctx.beginPath();
+  ctx.moveTo(-14, 0);
+  ctx.quadraticCurveTo(-30, 28, -22, 54);
+  ctx.lineTo(22, 54);
+  ctx.quadraticCurveTo(30, 28, 14, 0);
+  ctx.closePath();
+  ctx.fillStyle = costume === 'vampire' ? '#2A0E18' : shade(cloth, -0.6);
+  ctx.fill();
+  stroke(ctx, 2.2);
+
+  if (costume === 'vampire') {
+    // Blood-red lining, just visible at the hem.
+    ctx.beginPath();
+    ctx.moveTo(-20, 50);
+    ctx.quadraticCurveTo(0, 58, 20, 50);
+    ctx.strokeStyle = '#8B2635';
+    ctx.lineWidth = 4;
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+/** A sheet ghost has no legs — it hovers, and the hem ripples. */
+function drawGhostBody(ctx: CanvasRenderingContext2D, cloth: string, rotation: number) {
+  ctx.save();
+  ctx.rotate(rad(rotation * 0.4));
+
+  ctx.beginPath();
+  ctx.moveTo(-22, -6);
+  ctx.quadraticCurveTo(-26, -70, 0, -78);
+  ctx.quadraticCurveTo(26, -70, 22, -6);
+  // Rippling hem
+  ctx.quadraticCurveTo(16, 2, 11, -6);
+  ctx.quadraticCurveTo(5, 2, 0, -6);
+  ctx.quadraticCurveTo(-5, 2, -11, -6);
+  ctx.quadraticCurveTo(-16, 2, -22, -6);
+  ctx.closePath();
+  ctx.fillStyle = '#DCD6C8';
+  ctx.fill();
+  stroke(ctx);
+
+  ctx.globalAlpha *= 0.5;
+  ctx.beginPath();
+  ctx.ellipse(8, -40, 5, 16, rad(12), 0, Math.PI * 2);
+  ctx.fillStyle = shade(cloth, 0.2);
+  ctx.fill();
+  ctx.globalAlpha /= 0.5;
+
+  ctx.restore();
+}
+
+// ── head and face ─────────────────────────────────────────────────────────
+
+function drawHead(
+  ctx: CanvasRenderingContext2D,
+  costume: string,
+  skin: string,
+  cloth: string,
+  state: CharState,
+  t: number,
+  phase: number,
+  hairRot: number,
+  reduceMotion?: boolean,
+) {
+  const cy = -104;
+
+  if (costume === 'ghost') {
+    ctx.beginPath();
+    ctx.ellipse(0, cy + 6, 19, 18, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#DCD6C8';
+    ctx.fill();
+    stroke(ctx);
+    drawGhostFace(ctx, cy + 6, state);
+    return;
+  }
+
+  if (costume === 'pumpkin') {
+    drawPumpkinHead(ctx, cy, state, t, phase, reduceMotion);
+    return;
+  }
+
+  // Hair or hood behind the face, lagging the body.
+  ctx.save();
+  ctx.rotate(rad(hairRot * 0.5));
+  if (costume === 'hood') {
+    ctx.beginPath();
+    ctx.arc(0, cy, 22, Math.PI * 0.95, Math.PI * 2.05);
+    ctx.lineTo(20, cy + 14);
+    ctx.lineTo(-20, cy + 14);
+    ctx.closePath();
+    ctx.fillStyle = shade(cloth, -0.55);
+    ctx.fill();
+    stroke(ctx);
+  } else if (costume !== 'skull' && costume !== 'mummy') {
+    ctx.beginPath();
+    ctx.ellipse(0, cy - 9, 19, 12, 0, 0, Math.PI * 2);
+    ctx.fillStyle = '#241A1E';
+    ctx.fill();
+  }
+  ctx.restore();
+
+  // Face
+  ctx.beginPath();
+  ctx.ellipse(0, cy, 17, 16.5, 0, 0, Math.PI * 2);
+  ctx.fillStyle = costume === 'skull' ? '#E8E0CE' : skin;
+  ctx.fill();
+  stroke(ctx);
+
+  if (costume === 'skull') drawSkullFace(ctx, cy, state);
+  else drawFace(ctx, cy, state, t, phase, costume, reduceMotion);
+
+  drawHeadgear(ctx, costume, cy, cloth);
+}
+
+function blinking(t: number, phase: number, reduceMotion?: boolean) {
+  if (reduceMotion) return false;
+  // Irregular cycle, so a crowd never blinks in unison.
+  return ((t * 0.85 + phase * 0.37) % 4.2) > 4.05;
+}
+
+function drawFace(
+  ctx: CanvasRenderingContext2D,
+  cy: number,
+  state: CharState,
+  t: number,
+  phase: number,
+  costume: string,
+  reduceMotion?: boolean,
+) {
   const wide = state === 'shocked';
   const squeezed = state === 'laughing';
+  const shut = blinking(t, phase, reduceMotion) || squeezed;
 
-  ctx.fillStyle = '#FFFFFF';
-  ctx.strokeStyle = OUTLINE;
-  ctx.lineWidth = 2;
+  const browColour = costume === 'mummy' ? '#B9AE97' : '#241A1E';
 
+  // Eyes
   for (const ex of [-6.5, 6.5]) {
-    ctx.beginPath();
-    if (blinking || squeezed) {
-      ctx.moveTo(ex - 4, -46);
-      ctx.lineTo(ex + 4, -46);
+    if (shut) {
+      ctx.beginPath();
+      ctx.moveTo(ex - 4.5, cy - 2);
+      ctx.quadraticCurveTo(ex, cy + (squeezed ? -5 : 1), ex + 4.5, cy - 2);
+      ctx.strokeStyle = OUTLINE;
+      ctx.lineWidth = 2;
       ctx.stroke();
       continue;
     }
-    const rx = wide ? 5.5 : 4.5;
-    const ry = wide ? 6 : 5;
-    ctx.ellipse(ex, -46, rx, ry, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
 
     ctx.beginPath();
-    ctx.arc(ex, -45.5, wide ? 1.8 : 2.2, 0, Math.PI * 2);
-    ctx.fillStyle = OUTLINE;
+    ctx.ellipse(ex, cy - 2, wide ? 5.6 : 4.8, wide ? 6.2 : 5.2, 0, 0, Math.PI * 2);
+    ctx.fillStyle = EYE_WHITE;
     ctx.fill();
+    stroke(ctx, 1.8);
+
+    // Pupil drifts a little, so nobody stares dead ahead forever.
+    const drift = reduceMotion ? 0 : Math.sin(t * 0.5 + phase) * 1.1;
+    ctx.beginPath();
+    ctx.arc(ex + drift, cy - 1.6, wide ? 1.9 : 2.4, 0, Math.PI * 2);
+    ctx.fillStyle = '#140F16';
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.arc(ex + drift - 1, cy - 3, 0.9, 0, Math.PI * 2);
     ctx.fillStyle = '#FFFFFF';
+    ctx.fill();
   }
 
-  // Mouth
-  ctx.beginPath();
-  ctx.strokeStyle = OUTLINE;
+  // Brows carry most of the expression
+  ctx.strokeStyle = browColour;
   ctx.lineWidth = 2.4;
+  const browY = cy - 10;
+  if (state === 'shocked') {
+    ctx.beginPath();
+    ctx.moveTo(-11, browY - 1);
+    ctx.quadraticCurveTo(-6.5, browY - 5, -2, browY - 2);
+    ctx.moveTo(2, browY - 2);
+    ctx.quadraticCurveTo(6.5, browY - 5, 11, browY - 1);
+    ctx.stroke();
+  } else if (state === 'passed') {
+    ctx.beginPath();
+    ctx.moveTo(-11, browY - 2);
+    ctx.lineTo(-2, browY + 1);
+    ctx.moveTo(2, browY + 1);
+    ctx.lineTo(11, browY - 2);
+    ctx.stroke();
+  } else {
+    ctx.beginPath();
+    ctx.moveTo(-11, browY);
+    ctx.lineTo(-2, browY - 1);
+    ctx.moveTo(2, browY - 1);
+    ctx.lineTo(11, browY);
+    ctx.stroke();
+  }
+
+  drawMouth(ctx, cy, state, t, phase, reduceMotion);
+}
+
+function drawMouth(
+  ctx: CanvasRenderingContext2D,
+  cy: number,
+  state: CharState,
+  t: number,
+  phase: number,
+  reduceMotion?: boolean,
+) {
+  const my = cy + 8;
+  ctx.strokeStyle = '#5A2B2B';
+  ctx.lineWidth = 2.2;
+  ctx.beginPath();
+
   switch (state) {
     case 'speaking': {
-      // Flaps open and shut; the amount is what reads at a distance.
-      const open = 1.6 + Math.abs(Math.sin(t * 8 + phase)) * 3.4;
-      ctx.ellipse(0, -36, 4.5, open, 0, 0, Math.PI * 2);
-      ctx.fillStyle = '#3A1E22';
+      const open = reduceMotion ? 3 : 1.6 + Math.abs(Math.sin(t * 7 + phase)) * 3.6;
+      ctx.ellipse(0, my, 4.6, open, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#3A1620';
       ctx.fill();
       ctx.stroke();
-      break;
+      return;
     }
     case 'laughing':
-      ctx.arc(0, -38, 6, 0.15 * Math.PI, 0.85 * Math.PI);
-      ctx.stroke();
-      break;
-    case 'shocked':
-      ctx.ellipse(0, -36, 3.4, 4.6, 0, 0, Math.PI * 2);
-      ctx.fillStyle = '#3A1E22';
+      ctx.arc(0, my - 2, 6.5, 0.12 * Math.PI, 0.88 * Math.PI);
+      ctx.fillStyle = '#3A1620';
       ctx.fill();
       ctx.stroke();
-      break;
+      return;
+    case 'shocked':
+      ctx.ellipse(0, my, 3.6, 5, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#3A1620';
+      ctx.fill();
+      ctx.stroke();
+      return;
     case 'passed':
-      ctx.moveTo(-4, -36);
-      ctx.lineTo(4, -37.5);
+      ctx.moveTo(-4.5, my + 1);
+      ctx.quadraticCurveTo(0, my - 1.5, 4.5, my + 1);
       ctx.stroke();
-      break;
+      return;
     case 'winner':
-      ctx.arc(0, -38.5, 6.5, 0.1 * Math.PI, 0.9 * Math.PI);
+      ctx.arc(0, my - 3, 7, 0.08 * Math.PI, 0.92 * Math.PI);
       ctx.stroke();
-      break;
+      return;
     default:
-      ctx.arc(0, -38, 4.5, 0.2 * Math.PI, 0.8 * Math.PI);
+      ctx.arc(0, my - 2, 5, 0.18 * Math.PI, 0.82 * Math.PI);
       ctx.stroke();
   }
 }
 
-/**
- * Head-toppers. Index maps into Theme.toppers, so the same slot is a beanie by
- * the campfire and a witch's hat in the graveyard.
- */
-function drawTopper(
+function drawGhostFace(ctx: CanvasRenderingContext2D, cy: number, state: CharState) {
+  // Hollow sockets, no whites — a sheet has holes, not eyes.
+  ctx.fillStyle = '#160F1A';
+  for (const ex of [-6.5, 6.5]) {
+    ctx.beginPath();
+    ctx.ellipse(ex, cy - 2, state === 'shocked' ? 4.4 : 3.6, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.beginPath();
+  ctx.ellipse(0, cy + 8, state === 'speaking' ? 3.4 : 2.6, 4, 0, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawSkullFace(ctx: CanvasRenderingContext2D, cy: number, state: CharState) {
+  ctx.fillStyle = '#171018';
+  for (const ex of [-6.5, 6.5]) {
+    ctx.beginPath();
+    ctx.ellipse(ex, cy - 2, 5, 5.6, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // A pinprick of light, so a skull can still look at you.
+    ctx.beginPath();
+    ctx.arc(ex, cy - 2, 1.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#F0A83C';
+    ctx.fill();
+    ctx.fillStyle = '#171018';
+  }
+
+  ctx.beginPath();
+  ctx.moveTo(0, cy + 2);
+  ctx.lineTo(-2.4, cy + 6);
+  ctx.lineTo(2.4, cy + 6);
+  ctx.closePath();
+  ctx.fill();
+
+  // Teeth
+  ctx.strokeStyle = '#171018';
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.moveTo(-8, cy + 10);
+  ctx.lineTo(8, cy + 10);
+  ctx.stroke();
+  for (let i = -6; i <= 6; i += 3) {
+    ctx.beginPath();
+    ctx.moveTo(i, cy + 10);
+    ctx.lineTo(i, cy + (state === 'speaking' ? 15 : 13));
+    ctx.stroke();
+  }
+}
+
+function drawPumpkinHead(
   ctx: CanvasRenderingContext2D,
-  index: number,
-  theme: Theme,
-  topColour: string,
+  cy: number,
+  state: CharState,
+  t: number,
+  phase: number,
+  reduceMotion?: boolean,
 ) {
-  const kind = theme.toppers[index % theme.toppers.length];
-  ctx.strokeStyle = OUTLINE;
-  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.ellipse(0, cy, 20, 18, 0, 0, Math.PI * 2);
+  ctx.fillStyle = '#C4642A';
+  ctx.fill();
+  stroke(ctx);
 
-  switch (kind) {
-    case 'witch hat':
+  // Ribs
+  ctx.strokeStyle = 'rgba(20,10,4,0.28)';
+  ctx.lineWidth = 1.6;
+  for (const rx of [-10, 0, 10]) {
+    ctx.beginPath();
+    ctx.ellipse(rx, cy, 5, 17, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // Stalk
+  ctx.beginPath();
+  ctx.moveTo(0, cy - 17);
+  ctx.quadraticCurveTo(3, cy - 24, -2, cy - 27);
+  ctx.strokeStyle = '#4E6B34';
+  ctx.lineWidth = 4.5;
+  ctx.stroke();
+
+  // Carved face, lit from inside
+  const flicker = reduceMotion ? 1 : 0.82 + Math.sin(t * 6 + phase) * 0.18;
+  ctx.fillStyle = `rgba(255, 196, 92, ${flicker})`;
+
+  for (const ex of [-7, 7]) {
+    ctx.beginPath();
+    ctx.moveTo(ex - 5, cy - 6);
+    ctx.lineTo(ex + 5, cy - 4);
+    ctx.lineTo(ex, cy + 2);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  ctx.beginPath();
+  ctx.moveTo(0, cy);
+  ctx.lineTo(-3, cy + 5);
+  ctx.lineTo(3, cy + 5);
+  ctx.closePath();
+  ctx.fill();
+
+  // Grin — wider when they're enjoying themselves
+  const grin = state === 'laughing' || state === 'winner' ? 11 : 9;
+  ctx.beginPath();
+  ctx.moveTo(-grin, cy + 8);
+  ctx.lineTo(-grin + 3, cy + 13);
+  ctx.lineTo(-2, cy + 9);
+  ctx.lineTo(2, cy + 13);
+  ctx.lineTo(grin - 3, cy + 9);
+  ctx.lineTo(grin, cy + 8);
+  ctx.quadraticCurveTo(0, cy + 17, -grin, cy + 8);
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawHeadgear(
+  ctx: CanvasRenderingContext2D,
+  costume: string,
+  cy: number,
+  cloth: string,
+) {
+  switch (costume) {
+    case 'witch': {
       ctx.beginPath();
-      ctx.moveTo(-20, -56);
-      ctx.lineTo(20, -56);
-      ctx.stroke();
+      ctx.ellipse(0, cy - 15, 26, 5, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#231733';
+      ctx.fill();
+      stroke(ctx);
       ctx.beginPath();
-      ctx.moveTo(-13, -56);
-      ctx.quadraticCurveTo(-2, -74, 6, -86);
-      ctx.quadraticCurveTo(10, -70, 13, -56);
+      ctx.moveTo(-13, cy - 16);
+      ctx.quadraticCurveTo(-6, cy - 40, 7, cy - 52);
+      ctx.quadraticCurveTo(9, cy - 32, 13, cy - 16);
       ctx.closePath();
-      ctx.fillStyle = '#2E2338';
+      ctx.fillStyle = '#2E1F42';
       ctx.fill();
-      ctx.stroke();
-      break;
-
-    case 'bandages':
+      stroke(ctx);
       ctx.beginPath();
-      ctx.rect(-17, -58, 34, 10);
-      ctx.fillStyle = '#E8E0CE';
+      ctx.rect(-13, cy - 21, 26, 5);
+      ctx.fillStyle = '#F0A83C';
       ctx.fill();
-      ctx.stroke();
+      stroke(ctx, 1.6);
       break;
+    }
 
-    case 'sheet':
+    case 'vampire': {
+      // Widow's peak plus a stiff collar.
       ctx.beginPath();
-      ctx.moveTo(-19, -40);
-      ctx.quadraticCurveTo(-19, -66, 0, -66);
-      ctx.quadraticCurveTo(19, -66, 19, -40);
-      ctx.quadraticCurveTo(9, -34, 0, -40);
-      ctx.quadraticCurveTo(-9, -34, -19, -40);
+      ctx.moveTo(-17, cy - 8);
+      ctx.quadraticCurveTo(-14, cy - 20, 0, cy - 18);
+      ctx.quadraticCurveTo(14, cy - 20, 17, cy - 8);
+      ctx.lineTo(9, cy - 12);
+      ctx.lineTo(0, cy - 6);
+      ctx.lineTo(-9, cy - 12);
       ctx.closePath();
-      ctx.fillStyle = '#EDE6D6';
+      ctx.fillStyle = '#140D16';
       ctx.fill();
-      ctx.stroke();
+      stroke(ctx, 2);
       break;
+    }
 
-    case 'pumpkin':
-      ctx.beginPath();
-      ctx.ellipse(0, -46, 19, 17, 0, 0, Math.PI * 2);
-      ctx.fillStyle = '#E07B2C';
-      ctx.fill();
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(-2, -64);
-      ctx.lineTo(2, -70);
-      ctx.strokeStyle = '#4E6B34';
-      ctx.lineWidth = 4;
-      ctx.stroke();
+    case 'mummy': {
+      ctx.strokeStyle = '#E8E0CE';
+      ctx.lineWidth = 5;
+      for (let i = 0; i < 4; i += 1) {
+        ctx.beginPath();
+        ctx.moveTo(-17, cy - 12 + i * 9);
+        ctx.lineTo(17, cy - 15 + i * 9);
+        ctx.stroke();
+      }
+      ctx.strokeStyle = 'rgba(20,14,24,0.3)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 4; i += 1) {
+        ctx.beginPath();
+        ctx.moveTo(-17, cy - 12 + i * 9);
+        ctx.lineTo(17, cy - 15 + i * 9);
+        ctx.stroke();
+      }
       break;
+    }
 
-    case 'horns':
-      ctx.fillStyle = '#D8CBB4';
+    case 'devil': {
+      ctx.fillStyle = '#8B2635';
       for (const s of [-1, 1]) {
         ctx.beginPath();
-        ctx.moveTo(s * 11, -56);
-        ctx.quadraticCurveTo(s * 20, -64, s * 15, -74);
-        ctx.quadraticCurveTo(s * 12, -64, s * 6, -57);
+        ctx.moveTo(s * 10, cy - 14);
+        ctx.quadraticCurveTo(s * 20, cy - 22, s * 15, cy - 34);
+        ctx.quadraticCurveTo(s * 11, cy - 22, s * 5, cy - 15);
         ctx.closePath();
         ctx.fill();
-        ctx.stroke();
+        stroke(ctx, 2);
       }
       break;
+    }
 
-    case 'beanie':
-      ctx.beginPath();
-      ctx.arc(0, -50, 17, Math.PI, Math.PI * 2);
-      ctx.rect(-17, -50, 34, 5);
-      ctx.fillStyle = topColour;
-      ctx.fill();
-      ctx.stroke();
+    case 'hood':
+    case 'skull':
+    case 'none':
       break;
 
-    case 'curls':
-      ctx.fillStyle = '#3C2A22';
-      for (const [cx, cy, r] of [
-        [-13, -54, 8],
-        [0, -60, 9],
-        [13, -54, 8],
-      ]) {
-        ctx.beginPath();
-        ctx.arc(cx, cy, r, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.stroke();
-      }
-      break;
-
-    case 'cap':
+    default: {
+      // Anything else reads as a simple hat, in their own colour.
       ctx.beginPath();
-      ctx.arc(0, -50, 16, Math.PI, Math.PI * 2);
-      ctx.fillStyle = topColour;
+      ctx.arc(0, cy - 12, 17, Math.PI, Math.PI * 2);
+      ctx.rect(-17, cy - 12, 34, 4);
+      ctx.fillStyle = shade(cloth, -0.2);
       ctx.fill();
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.ellipse(8, -50, 14, 4, 0, 0, Math.PI);
-      ctx.fill();
-      ctx.stroke();
-      break;
-
-    case 'bun':
-      ctx.beginPath();
-      ctx.arc(0, -62, 8, 0, Math.PI * 2);
-      ctx.fillStyle = '#3C2A22';
-      ctx.fill();
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.arc(0, -50, 17, Math.PI * 1.05, Math.PI * 1.95);
-      ctx.fill();
-      ctx.stroke();
-      break;
-
-    default:
-      break; // 'none' / 'bald'
+      stroke(ctx, 2.2);
+    }
   }
 }
 
-/** A label plate under a character. Drawn in DOM-quality type, not canvas text
- *  hinting, by keeping it large and high-contrast. */
+// ── nameplate ─────────────────────────────────────────────────────────────
+
 export function drawNameplate(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -404,18 +822,28 @@ export function drawNameplate(
   const padding = 7 * scale;
   const width = ctx.measureText(name).width + padding * 2;
   const height = fontSize + padding;
-  // Clear of the feet, so a plate never sits over its own character — and far
-  // enough down that a neighbour's plate is a separate object, not a collision.
   const top = y + 9 * scale;
 
   ctx.beginPath();
   ctx.roundRect(x - width / 2, top, width, height, 3);
-  ctx.fillStyle = highlight ? theme.palette.ember : 'rgba(16,12,22,0.9)';
+  ctx.fillStyle = highlight ? theme.palette.ember : 'rgba(14,9,18,0.9)';
   ctx.fill();
   ctx.lineWidth = 1;
-  ctx.strokeStyle = highlight ? theme.palette.ember : 'rgba(255,255,255,0.09)';
+  ctx.strokeStyle = highlight ? theme.palette.ember : 'rgba(255,255,255,0.1)';
   ctx.stroke();
 
   ctx.fillStyle = highlight ? '#1A1206' : theme.palette.text;
   ctx.fillText(name, x, top + height / 2);
+}
+
+// ── helpers ───────────────────────────────────────────────────────────────
+
+/** Lighten (positive) or darken (negative) a hex colour. */
+function shade(hex: string, amount: number): string {
+  const n = parseInt(hex.slice(1), 16);
+  const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
+  const r = clamp(((n >> 16) & 255) * (1 + amount));
+  const g = clamp(((n >> 8) & 255) * (1 + amount));
+  const b = clamp((n & 255) * (1 + amount));
+  return `rgb(${r},${g},${b})`;
 }

@@ -5,8 +5,34 @@ import { themeById, themes, type Theme } from '../game/themes';
 import { BODY_TONES, TOP_COLOURS, lookFromSeed } from '../scene/character';
 import { CampfireScene } from '../scene/Campfire';
 import type { Campfire } from '../state/useCampfire';
+import type { SceneCharacter } from '../scene/Campfire';
+import type { CharState } from '../scene/character';
 
 type Mode = 'choose' | 'create' | 'join';
+
+/**
+ * The hero ring: one of every costume, mid-round. The landing page should show
+ * the game rather than describe it, and this is the only place a visitor sees
+ * what they are joining before they commit a name to it.
+ */
+const HERO: [string, number, CharState][] = [
+  ['Amara', 0, 'listening'], // witch
+  ['Bruno', 1, 'laughing'], // pumpkin
+  ['Chiara', 2, 'idle'], // ghost
+  ['Dmitri', 3, 'shocked'], // mummy
+  ['Elif', 4, 'speaking'], // devil
+  ['Farouk', 5, 'voting'], // skull
+  ['Greta', 6, 'idle'], // vampire
+  ['Hiro', 7, 'listening'], // hood
+];
+
+const heroCast: SceneCharacter[] = HERO.map(([name, topper, state]) => ({
+  id: name,
+  name,
+  look: { ...lookFromSeed(name), topper },
+  state,
+  away: name === 'Hiro',
+}));
 
 export function Landing({ campfire }: { campfire: Campfire }) {
   const [mode, setMode] = useState<Mode>('choose');
@@ -60,6 +86,12 @@ export function Landing({ campfire }: { campfire: Campfire }) {
           quietest person on the call can win the night without ever unmuting.
         </p>
       </header>
+
+      {mode === 'choose' && (
+        <section className="scene-frame">
+          <CampfireScene characters={heroCast} theme={theme} className="scene-canvas" />
+        </section>
+      )}
 
       {mode === 'choose' ? (
         <section className="choose-mode">
@@ -151,7 +183,13 @@ export function Landing({ campfire }: { campfire: Campfire }) {
           </div>
 
           <div className="setup-preview">
-            <CampfireScene characters={preview} theme={theme} className="preview-canvas" />
+            <CampfireScene
+              characters={preview}
+              theme={theme}
+              zoom={2.1}
+              showFire={false}
+              className="preview-canvas"
+            />
             <p className="muted preview-note">This is you. Everyone else joins around you.</p>
           </div>
         </section>

@@ -19,6 +19,11 @@ export interface CampfireSceneProps {
   fireScale?: number;
   /** Draw the name under each character. Off on small player screens. */
   showNames?: boolean;
+  /** Magnify everyone — used by the character customiser, where one figure
+   *  fills the frame and the player needs to actually see what they picked. */
+  zoom?: number;
+  /** The customiser hides the fire so nothing competes with the character. */
+  showFire?: boolean;
   className?: string;
 }
 
@@ -38,11 +43,15 @@ interface Seat {
  */
 function seatPositions(count: number, w: number, h: number): Seat[] {
   const cx = w / 2;
+
+  // One character is a portrait, not a ring: centre them and stand them at the
+  // front, where the customiser can show them off.
+  if (count === 1) return [{ x: cx, y: h * 0.86, scale: 1, light: 0.7 }];
   // The ring sits well above the fire: a shallow ellipse reads as a straight
   // line of people, and a fire drawn at the same height swallows whoever is
   // seated directly behind it — which is exactly where the speaker ends up.
   const cy = h * 0.62;
-  const rx = w * 0.36;
+  const rx = w * 0.32;
   const ry = h * 0.22;
 
   // One ring is comfortable up to nine; beyond that, split evenly into two.
@@ -96,13 +105,15 @@ export function CampfireScene({
   theme,
   fireScale = 1,
   showNames = true,
+  zoom = 1,
+  showFire = true,
   className,
 }: CampfireSceneProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Kept in a ref so the animation loop is started once and never restarted by
   // a re-render — restarting it on every state change would reset the fire.
-  const propsRef = useRef({ characters, theme, fireScale, showNames });
-  propsRef.current = { characters, theme, fireScale, showNames };
+  const propsRef = useRef({ characters, theme, fireScale, showNames, zoom, showFire });
+  propsRef.current = { characters, theme, fireScale, showNames, zoom, showFire };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -134,17 +145,20 @@ export function CampfireScene({
 
     const render = (now: number) => {
       const t = (now - start) / 1000;
-      const { characters: cast, theme: th, fireScale: fs, showNames: names } = propsRef.current;
+      const {
+        characters: cast, theme: th, fireScale: fs,
+        showNames: names, zoom: mag, showFire: fire,
+      } = propsRef.current;
 
       ctx.clearRect(0, 0, width, height);
-      drawBackdrop(ctx, width, height, th);
+      drawBackdrop(ctx, width, height, th, t, reduceMotion);
 
       const fireX = width / 2;
       const fireY = height * 0.74;
-      const sizeScale = Math.min(width / 820, height / 460);
-      const s = Math.max(0.55, Math.min(1.35, sizeScale));
+      const sizeScale = Math.min(width / 700, height / 430);
+      const s = Math.max(0.45, Math.min(1.4, sizeScale)) * mag;
 
-      drawFireGlow(ctx, fireX, fireY, 300 * s * fs, th, t, reduceMotion);
+      if (fire) drawFireGlow(ctx, fireX, fireY, 300 * s * fs, th, t, reduceMotion);
 
       const seats = seatPositions(cast.length, width, height);
 
@@ -170,7 +184,9 @@ export function CampfireScene({
         });
       }
 
-      drawFire(ctx, { x: fireX, y: fireY, scale: s * fs * 1.3, t, theme: th, reduceMotion });
+      if (fire) {
+        drawFire(ctx, { x: fireX, y: fireY, scale: s * fs * 1.3, t, theme: th, reduceMotion });
+      }
 
       // Nameplates last, so nobody's label is hidden behind a neighbour.
       if (names) {
