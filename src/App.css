@@ -170,7 +170,7 @@ select { width: 100%; background: var(--night); color: var(--text);
 .leave { position: fixed; bottom: 10px; right: 10px; background: transparent;
   border: 1px solid var(--edge); color: var(--muted); padding: 6px 10px; font-size: 11px; z-index: 20; }
 
-.clock { font-family: var(--mono); font-weight: 700; font-size: 30px;
+.clock { display: inline-flex; align-items: center; font-family: var(--mono); font-weight: 700; font-size: 30px;
   font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
 .clock-big { font-size: clamp(38px, 6vw, 68px); }
 .clock.warn { color: var(--ember); }
@@ -182,17 +182,48 @@ select { width: 100%; background: var(--night); color: var(--text);
 .tag-say { background: rgba(240,168,60,.16); color: var(--ember); }
 .pips { display: inline-flex; align-items: center; gap: 5px; font-family: var(--mono);
   font-size: 10px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
-.pip { width: 8px; height: 8px; border-radius: 50%; box-shadow: inset 0 0 0 1px var(--edge); }
-.pip.on { background: var(--ember); box-shadow: none; }
+.pip { color: var(--edge); }
+.pip.on { color: var(--ember); }
 
-.card-panel { background: var(--panel); border: 1px solid var(--edge);
-  border-radius: var(--r-md); padding: 20px 22px; }
-.card-meta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+.glyph { display: inline-block; vertical-align: -0.14em; flex: none; }
+.tag .glyph { vertical-align: -0.2em; margin-right: 5px; }
+.clock .glyph { opacity: .5; margin-right: .18em; }
+
+/* The card is a card.
+   Arkham Horror's anatomy — type line, title, rules text, then flavour under a
+   rule — because that order is what makes a card readable at a glance, and
+   Inscryption's worn, candle-lit surface, because a flat rectangle reads as a
+   dialog box and a dialog box is not something you want to pick up. The grain
+   and the burn are gradients: this repo ships no image assets. */
+.card-panel { position: relative; padding: 20px 22px; border-radius: var(--r-md);
+  border: 1px solid var(--edge);
+  background:
+    radial-gradient(120% 90% at 50% -20%, rgba(240,168,60,.09), transparent 58%),
+    radial-gradient(80% 60% at 100% 115%, rgba(0,0,0,.4), transparent 60%),
+    var(--panel);
+  box-shadow: inset 0 0 0 1px rgba(240,232,214,.045), 0 14px 34px rgba(0,0,0,.34); }
+/* A hairline inset frame, the way a printed card has a border inside its edge. */
+.card-panel::before { content: ''; position: absolute; inset: 5px; border-radius: 3px;
+  border: 1px solid rgba(240,232,214,.09); pointer-events: none; }
+.card-panel[data-lane='do'] { border-color: rgba(95,191,199,.34); }
+.card-panel[data-lane='say'] { border-color: rgba(240,168,60,.28); }
+
+.card-corner { position: absolute; width: 34px; height: 34px; color: var(--text);
+  opacity: .09; pointer-events: none; }
+.card-corner-tl { top: 2px; left: 2px; }
+.card-corner-br { bottom: 2px; right: 2px; transform: rotate(180deg); }
+.card-big .card-corner { width: 54px; height: 54px; }
+
+.card-meta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  margin-bottom: 12px; position: relative; }
 .card-sub { font-family: var(--mono); font-size: 11px; color: var(--ember); }
-.card-title { font-size: 27px; font-weight: 900; margin-bottom: 10px; }
+.card-title { font-size: 27px; font-weight: 900; margin-bottom: 10px; position: relative; }
+.card-say { position: relative; }
 .card-say { font-size: 17px; margin: 0 0 12px; max-width: 54ch; }
-.card-wins { font-size: 13.5px; color: var(--muted); margin: 0; padding-left: 12px;
-  border-left: 2px solid var(--flame); max-width: 56ch; }
+/* Flavour text: a rule above it and italics, the long-settled convention for
+   "this part is not the rules". */
+.card-wins { font-size: 13.5px; color: var(--muted); margin: 0; padding-top: 11px;
+  border-top: 1px solid var(--edge); font-style: italic; max-width: 56ch; }
 .card-big { background: rgba(20,16,26,.88); backdrop-filter: blur(2px); }
 .card-big .card-title { font-size: clamp(30px, 4.4vw, 52px); }
 .stage-centre.with-answers .card-big .card-title { font-size: clamp(22px, 2.6vw, 34px); }
@@ -450,7 +481,10 @@ select { width: 100%; background: var(--night); color: var(--text);
 .how-to-body h4 { font-family: var(--mono); font-size: 10px; letter-spacing: .2em;
   text-transform: uppercase; color: var(--ember); margin: 4px 0 0; }
 .how-to-body dl { margin: 0; display: flex; flex-direction: column; gap: 9px; }
-.how-to-body dt { font-family: var(--display); font-size: 15.5px; color: var(--text); }
+.how-to-body dt { font-family: var(--display); font-size: 15.5px; color: var(--text);
+  display: flex; align-items: center; gap: 7px; }
+.how-to-body dt .glyph { color: var(--ember); opacity: .85; }
+.how-to-body h4 { display: flex; align-items: center; gap: 6px; }
 .how-to-body dd { margin: 2px 0 0; padding-left: 11px; border-left: 1px solid var(--edge); }
 
 /* ── host: the run of show ───────────────────────────────── */
@@ -481,3 +515,16 @@ select { width: 100%; background: var(--night); color: var(--text);
 .landing-rules { padding: 14px 18px; }
 .landing-rules summary { font-family: var(--mono); font-size: 10px; letter-spacing: .2em;
   text-transform: uppercase; color: var(--muted); cursor: pointer; }
+
+.btn-pass-line { display: inline-flex; align-items: center; gap: 7px; }
+.awards-head { display: flex; align-items: center; gap: 14px; }
+.awards-head .glyph { color: var(--ember); flex: none; }
+.podium li[data-place='1'] .glyph { color: #1a1206; }
+
+/* The attribution CC BY asks for, sized like a colophon rather than a banner. */
+.colophon { display: flex; flex-direction: column; gap: 8px; align-items: center;
+  text-align: center; padding-top: 8px; border-top: 1px solid var(--edge); }
+.colophon-marks { display: flex; gap: 14px; color: var(--muted); opacity: .5; }
+.colophon p { margin: 0; font-size: 12px; color: var(--muted); max-width: 56ch; }
+.colophon a { color: var(--muted); text-underline-offset: 2px; }
+.colophon a:hover { color: var(--ember); }

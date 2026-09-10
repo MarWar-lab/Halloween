@@ -8,6 +8,7 @@ import type { Campfire } from '../state/useCampfire';
 import type { SceneCharacter } from '../scene/Campfire';
 import type { CharState } from '../scene/character';
 import { HowToPlay } from './shared';
+import { Glyph } from '../ui/Glyph';
 
 type Mode = 'choose' | 'create' | 'join';
 
@@ -200,6 +201,35 @@ export function Landing({ campfire }: { campfire: Campfire }) {
             <p className="muted preview-note">This is you. Everyone else joins around you.</p>
           </div>
         </section>
+      )}
+      {mode === 'choose' && (
+        // CC BY 3.0 requires the credit to be visible where the work is used,
+        // not filed away in a repository nobody opens.
+        <footer className="colophon">
+          <span className="colophon-marks" aria-hidden="true">
+            <Glyph name="pumpkin" size={15} />
+            <Glyph name="ghost" size={15} />
+            <Glyph name="cauldron" size={15} />
+            <Glyph name="raven" size={15} />
+            <Glyph name="tombstone" size={15} />
+            <Glyph name="candle" size={15} />
+          </span>
+          <p>
+            Glyphs by Lorc, Delapouite and Carl Olsen, from{' '}
+            <a href="https://game-icons.net" target="_blank" rel="noreferrer">
+              game-icons.net
+            </a>
+            , under{' '}
+            <a
+              href="https://creativecommons.org/licenses/by/3.0/"
+              target="_blank"
+              rel="noreferrer"
+            >
+              CC BY 3.0
+            </a>
+            . The fire and everyone around it are drawn from scratch, every frame.
+          </p>
+        </footer>
       )}
     </main>
   );

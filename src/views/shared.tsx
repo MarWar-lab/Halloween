@@ -3,6 +3,24 @@ import { formatClock, secondsUntil } from '../lib/clock';
 import { deckById } from '../game/decks';
 import type { Card, Player, Round } from '../game/types';
 import type { Theme } from '../game/themes';
+import { Glyph, type GlyphName } from '../ui/Glyph';
+
+/**
+ * A glyph per mechanic. The word is always there too — this is recognition at
+ * a glance from the back of a Zoom call, not a rebus.
+ */
+export const MECHANIC_GLYPH: Record<string, GlyphName> = {
+  allplay: 'crowd',
+  guesswho: 'mask',
+  solo: 'person',
+  duel: 'swords',
+};
+
+const MECHANIC_WORD: Record<string, string> = {
+  allplay: 'Everyone answers',
+  guesswho: 'Guess who',
+  duel: 'Duel',
+};
 
 export function cardFor(deckId: string, cardId: string | null | undefined): Card | null {
   if (!cardId) return null;
@@ -32,6 +50,7 @@ export function Countdown({ round, big = false }: { round: Round | null; big?: b
       role="timer"
       aria-live={left <= 5 ? 'assertive' : 'off'}
     >
+      <Glyph name="hourglass" size={big ? 26 : 15} />
       {formatClock(left)}
     </div>
   );
@@ -56,20 +75,29 @@ export function HowToPlay({ theme }: { theme: Theme }) {
 
         <h4>The four kinds of card</h4>
         <dl>
-          <dt>Everyone answers</dt>
+          <dt>
+            <Glyph name="crowd" size={15} />
+            Everyone answers
+          </dt>
           <dd>
             You all type an answer privately. They go up on the shared screen
             with no names on them and everyone votes for a favourite.{' '}
             <strong>1 point for answering, 2 for every vote you get.</strong>
           </dd>
 
-          <dt>Guess who</dt>
+          <dt>
+            <Glyph name="mask" size={15} />
+            Guess who
+          </dt>
           <dd>
             Same, but you guess who wrote each one.{' '}
             <strong>2 points per correct guess, 1 for every person you fool.</strong>
           </dd>
 
-          <dt>One person</dt>
+          <dt>
+            <Glyph name="person" size={15} />
+            One person
+          </dt>
           <dd>
             One player takes the card — a {theme.vocab.laneSay.toLowerCase()} or a{' '}
             {theme.vocab.laneDo.toLowerCase()} — and everyone else scores it 1–5.{' '}
@@ -77,14 +105,20 @@ export function HowToPlay({ theme }: { theme: Theme }) {
             higher than talent.
           </dd>
 
-          <dt>Duel</dt>
+          <dt>
+            <Glyph name="swords" size={15} />
+            Duel
+          </dt>
           <dd>
             Two players, one prompt, the room picks.{' '}
             <strong>3 to the winner, 1 each for turning up.</strong>
           </dd>
         </dl>
 
-        <h4>The {theme.vocab.pass}</h4>
+        <h4>
+          <Glyph name="cape" size={13} />
+          The {theme.vocab.pass}
+        </h4>
         <p>
           You get one, for the whole night. It ends the card you are on and{' '}
           <strong>costs you nothing at all</strong> — no points, no penalty, no
@@ -146,21 +180,33 @@ export function CardPanel({
 }) {
   if (!card) return null;
   const laneWord = card.lane === 'do' ? theme.vocab.laneDo : theme.vocab.laneSay;
+  const typeLine = card.mechanic === 'solo' ? laneWord : MECHANIC_WORD[card.mechanic];
 
+  // Laid out like a real card: a type line across the top, the title, the
+  // rules text, then the flavour line under a rule. Card games settled on
+  // that order because it survives being read in a hurry.
   return (
-    <div className={`card-panel ${big ? 'card-big' : ''}`}>
+    <div className={`card-panel ${big ? 'card-big' : ''}`} data-lane={card.lane}>
+      <span className="card-corner card-corner-tl" aria-hidden="true">
+        <Glyph name="cobweb" size="100%" />
+      </span>
+      <span className="card-corner card-corner-br" aria-hidden="true">
+        <Glyph name="cobweb" size="100%" />
+      </span>
+
       <div className="card-meta">
         <span className={`tag ${card.lane === 'do' ? 'tag-do' : 'tag-say'}`}>
-          {card.mechanic === 'solo' ? laneWord : card.mechanic}
+          <Glyph name={MECHANIC_GLYPH[card.mechanic] ?? 'person'} size={13} />
+          {typeLine}
         </span>
         <span className="pips" aria-label={`Heat ${card.heat} of 3`}>
-          heat
           {[1, 2, 3].map((h) => (
-            <i key={h} className={h <= card.heat ? 'pip on' : 'pip'} />
+            <Glyph key={h} name="flame" size={13} className={h <= card.heat ? 'pip on' : 'pip'} />
           ))}
         </span>
         {subtitle && <span className="card-sub">{subtitle}</span>}
       </div>
+
       <h2 className="card-title">{card.title}</h2>
       <p className="card-say">{card.prompt}</p>
       <p className="card-wins">{card.wins}</p>

@@ -6,6 +6,7 @@ import { themeById } from '../game/themes';
 import type { GameSnapshot } from '../net';
 import type { Campfire } from '../state/useCampfire';
 import { CardPanel, Countdown, Leaderboard, cardFor, nameOf } from './shared';
+import { Glyph } from '../ui/Glyph';
 
 /**
  * The Stage is what the host screen-shares. It is read-only and deliberately
@@ -437,10 +438,14 @@ function Awards({ snapshot }: { snapshot: GameSnapshot }) {
 
   return (
     <div className="awards">
-      <h1>{winner ? `${winner.name} takes it` : 'That was the night'}</h1>
+      <h1 className="awards-head">
+        <Glyph name="laurels" size={40} />
+        {winner ? `${winner.name} takes it` : 'That was the night'}
+      </h1>
       <ol className="podium">
         {ranked.slice(0, 3).map((p, i) => (
           <li key={p.id} data-place={i + 1}>
+            {i === 0 && <Glyph name="podium" size={20} />}
             <span className="podium-name">{p.name}</span>
             <span className="podium-score">{p.score}</span>
           </li>

@@ -6,6 +6,7 @@ import { CampfireScene } from '../scene/Campfire';
 import type { Campfire } from '../state/useCampfire';
 import type { GameSnapshot, VoteInput } from '../net';
 import { CardPanel, Countdown, HowToPlay, Leaderboard, ReactionBar, cardFor } from './shared';
+import { Glyph } from '../ui/Glyph';
 
 /**
  * The player's own device. Phone-first, and built on one rule: the screen
@@ -227,7 +228,10 @@ export function Player({ campfire }: { campfire: Campfire }) {
             className="btn btn-pass"
             onClick={() => void act(() => backend.spendPass(snap.game.id))}
           >
-            Use my {theme.vocab.pass}
+            <span className="btn-pass-line">
+              <Glyph name="cape" size={16} />
+              Use my {theme.vocab.pass}
+            </span>
             <span>Ends this card. Costs you nothing.</span>
           </button>
         )}
