@@ -1,0 +1,149 @@
+/*
+ * Campfire — base styles.
+ *
+ * Committed to a single dark world rather than following the OS theme: the game
+ * is a fire at night, and half of it is screen-shared into a dark Zoom window.
+ * Colour tokens are written onto :root at runtime by applyTheme(), so these
+ * values are only the fallback before a theme loads.
+ */
+
+:root {
+  --night: #14101a;
+  --ground: #1c1622;
+  --panel: #241c2c;
+  --edge: #362b42;
+  --text: #efe6d6;
+  --muted: #a295ae;
+  --ember: #f0a83c;
+  --flame: #b9761f;
+  --cool: #5fbfc7;
+  --alert: #c9463c;
+
+  --display: 'Fraunces', 'Iowan Old Style', Georgia, serif;
+  --body: 'Archivo', 'Helvetica Neue', Arial, sans-serif;
+  --mono: 'Space Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --r-sm: 3px;
+  --r-md: 6px;
+
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--night);
+  color: var(--text);
+  font-family: var(--body);
+  font-size: 15px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--display);
+  font-variation-settings: 'SOFT' 26, 'WONK' 1;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+  margin: 0;
+}
+
+button {
+  font-family: var(--body);
+  cursor: pointer;
+  border-radius: var(--r-sm);
+  transition:
+    background 0.15s,
+    border-color 0.15s,
+    color 0.15s;
+}
+
+button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+input,
+textarea {
+  font-family: var(--body);
+  background: var(--night);
+  color: var(--text);
+  border: 1px solid var(--edge);
+  border-radius: var(--r-sm);
+  padding: 11px 12px;
+  font-size: 16px; /* 16px stops iOS Safari zooming the page on focus */
+  width: 100%;
+}
+
+:focus-visible {
+  outline: 2px solid var(--ember);
+  outline-offset: 2px;
+}
+
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--ember);
+  margin: 0;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.btn {
+  display: inline-block;
+  padding: 12px 18px;
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--edge);
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.btn:hover:not(:disabled) {
+  border-color: var(--muted);
+  background: var(--panel);
+}
+
+.btn-primary {
+  background: var(--ember);
+  border-color: var(--ember);
+  color: #1a1206;
+  font-weight: 700;
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: #ffbb55;
+  border-color: #ffbb55;
+}
+
+/* Touch targets never smaller than this on the player view — it is used one-
+   handed on a phone, in the dark, while laughing. */
+.btn,
+.btn-primary {
+  min-height: 44px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
