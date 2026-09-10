@@ -20,22 +20,32 @@ see:
 these in **your own terminal**, not through an assistant: the CLI puts both in
 your OS keychain, and neither should pass through a chat transcript.
 
+**Run them from the project directory.** The CLI resolves `supabase/` relative
+to your shell, and `link` writes the project ref into `supabase/.temp/`. Run
+it somewhere else and it will scaffold a second, empty `supabase/` folder
+there and then fail to find any migrations — the symptom is
+`glob supabase/migrations/…: file does not exist`.
+
 ```bash
+cd "/Users/mariowarwar/Downloads/vibe coded apps/campfire"
 npx supabase login
 npx supabase link --project-ref imcgpjxhjdahdwgkyudt
-```
-
-`0001` and `0002` were applied by hand, so the remote has no record of them.
-Tell the CLI they are already there, or it will re-run them:
-
-```bash
-npx supabase migration repair --status applied 20260901120000 20260901120100
 npx supabase db push
 ```
 
-Re-running them is *safe* — `npm run check:sql` proves all three re-apply
-cleanly over a database that already holds a played game — but there is no
-reason to churn production DDL for nothing.
+The first two migrations were applied by hand, so the remote has no record of
+them and `db push` will run all three. That is fine:
+`npm run check:sql` applies the whole set a second time over a database that
+already holds a played game, and checks the answers, votes and scores are all
+still there afterwards.
+
+If you would rather not re-run DDL on production, mark them applied first —
+but only once `link` has succeeded **in this directory**, because repair reads
+the local files:
+
+```bash
+npx supabase migration repair --status applied 20260901120000 20260901120100
+```
 
 ### Option B — paste it
 
