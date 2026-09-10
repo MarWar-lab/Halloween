@@ -162,13 +162,16 @@ create policy rounds_read on public.rounds
 -- THE SEALING POLICY. Your own submission is always yours to see; everyone
 -- else's becomes visible only once the host reveals. This is the guarantee the
 -- all-play mechanic rests on.
+--
+-- `voting` must be in the open list: answers stay sealed through `submitting`,
+-- but a voter has to be able to read what they are voting on.
 drop policy if exists submissions_read on public.submissions;
 create policy submissions_read on public.submissions
   for select to authenticated using (
     player_id = public.my_player(public.round_game(round_id))
     or (
       public.is_member(public.round_game(round_id))
-      and public.round_phase(round_id) in ('revealing','scored')
+      and public.round_phase(round_id) in ('revealing','voting','scored')
     )
   );
 
