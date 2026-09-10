@@ -3,7 +3,7 @@
  * tables directly, which is what makes the scoreboard trustworthy.
  *
  * Reads are plain selects, filtered by the RLS policies in
- * supabase/migrations/0001_init.sql. Submissions and votes come back empty
+ * supabase/migrations/20260901120000_init.sql. Submissions and votes come back empty
  * until the round phase opens them; that is the server's decision, not this
  * file's, and the local backend imitates it so tests stay honest.
  */
@@ -113,7 +113,7 @@ export class SupabaseBackend implements Backend {
     const { error } = await this.client.from('games').select('id').limit(1);
     if (error && /schema cache|does not exist/i.test(error.message)) {
       throw new BackendError(
-        'The database schema has not been applied yet. Run supabase/migrations/0001_init.sql in the SQL editor.',
+        'The database schema has not been applied yet. Run supabase/migrations/20260901120000_init.sql in the SQL editor.',
         'not_configured',
       );
     }
@@ -126,7 +126,7 @@ export class SupabaseBackend implements Backend {
     });
     if (anonMissing && /does not exist|schema cache/i.test(anonMissing.message)) {
       throw new BackendError(
-        'Answers would not be anonymous: run supabase/migrations/0003_anonymity.sql in the SQL editor.',
+        'Answers would not be anonymous: run supabase/migrations/20260910150000_anonymity.sql in the SQL editor.',
         'not_configured',
       );
     }

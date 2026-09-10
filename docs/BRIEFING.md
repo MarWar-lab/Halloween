@@ -103,7 +103,7 @@ This cost half a day once.
 Committed and green: 71 tests, typecheck clean, production build clean.
 
 **Action required before the Supabase backend works:** run
-`supabase/migrations/0003_anonymity.sql` in the Supabase SQL editor.
+`supabase/migrations/20260910150000_anonymity.sql` in the Supabase SQL editor.
 `npm run verify:live` stops with that instruction until you do. Until it is
 applied the app falls back to the local backend and says so in the UI.
 

@@ -34,7 +34,7 @@ key on.
 ## 3. Run the schema
 
 1. **SQL Editor** → **New query**.
-2. Open `supabase/migrations/0001_init.sql` from this repo, copy the whole file,
+2. Open `supabase/migrations/20260901120000_init.sql` from this repo, copy the whole file,
    paste it in.
 3. **Run**.
 

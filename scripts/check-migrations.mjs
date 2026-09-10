@@ -252,6 +252,28 @@ check('the Pass costs exactly zero', after.score === before, `${before} -> ${aft
 check('the Pass is recorded', after.pass_spent === true);
 check('the Pass closes the card', closed.phase === 'scored', closed.phase);
 
+console.log('\n=== re-applying over a database that already has a game in it ===');
+// This is the real situation on the hosted project: 0001 and 0002 were
+// applied by hand, so `supabase db push` finds an empty migration table and
+// runs all three against live data. Re-running on an empty schema proves
+// much less than re-running on top of rows.
+await db.exec('reset role;');
+for (const file of files) {
+  try {
+    await db.exec(load(file));
+    check(`${file} re-applies over live data`, true);
+  } catch (err) {
+    check(`${file} re-applies over live data`, false, String(err.message).split('\n')[0]);
+  }
+}
+const kept = await db.query(
+  'select (select count(*) from submissions) as subs, (select count(*) from votes) as votes,'
+  + ' (select count(*) from players where score > 0) as scored',
+);
+check('the game survives the re-apply intact',
+  Number(kept.rows[0].subs) > 0 && Number(kept.rows[0].scored) > 0,
+  JSON.stringify(kept.rows[0]));
+
 console.log('\n--- a player still cannot drive the game ---');
 await be(BEN);
 let denied = null;

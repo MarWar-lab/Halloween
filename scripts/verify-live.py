@@ -82,7 +82,7 @@ probe = call("POST", "/rest/v1/rpc/round_progress", tok_a,
              {"p_round": "00000000-0000-0000-0000-000000000000"})
 if isinstance(probe, dict) and probe.get("__error__") in (404, 400):
     print("  FAIL  migration 0003 has not been applied")
-    print("\n  Run supabase/migrations/0003_anonymity.sql in the Supabase SQL editor,")
+    print("\n  Run supabase/migrations/20260910150000_anonymity.sql in the Supabase SQL editor,")
     print("  then run this again. Until then, answers are NOT anonymous.")
     raise SystemExit(1)
 check("migration 0003 is applied", True)
