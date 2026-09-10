@@ -525,6 +525,23 @@ begin
 end; $$;
 
 -- ─── grants ─────────────────────────────────────────────────────────────────
+-- GRANT and POLICY are separate gates and both are required: the grant decides
+-- whether you may touch the table at all, the policy decides which rows you see
+-- once you may. Enabling RLS without granting SELECT fails every read with
+-- 42501 before a policy is ever consulted.
+--
+-- SELECT only. Every write goes through the security-definer RPCs below, so a
+-- player cannot alter their own score even if a policy were wrong.
+
+grant usage on schema public to anon, authenticated;
+
+grant select on table
+  public.games,
+  public.players,
+  public.rounds,
+  public.submissions,
+  public.votes
+to authenticated;
 
 grant execute on function
   public.create_game(text, text),

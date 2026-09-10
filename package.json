@@ -9,7 +9,8 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "verify:live": "python3 scripts/verify-live.py"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
