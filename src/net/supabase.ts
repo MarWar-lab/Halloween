@@ -252,10 +252,14 @@ export class SupabaseBackend implements Backend {
   subscribe(gameId: string, onChange: (snapshot: GameSnapshot) => void) {
     let stopped = false;
 
+    let lastPhase: RoundPhase = 'scored';
+
     const push = async () => {
       if (stopped) return;
       const snap = await this.fetchSnapshot(gameId);
-      if (snap && !stopped) onChange(snap);
+      if (!snap || stopped) return;
+      lastPhase = snap.round?.phase ?? 'scored';
+      onChange(snap);
     };
 
     // Postgres Changes carries the authoritative tables. Submissions and votes
@@ -273,14 +277,31 @@ export class SupabaseBackend implements Backend {
 
     this.channels.set(gameId, channel);
 
-    // Submissions and votes arrive without a realtime event of their own, so a
-    // slow poll keeps "6 of 9 answered" honest during a submitting phase.
-    const tick = window.setInterval(push, 4000);
-    void push();
+    // Submissions and votes are deliberately absent from the realtime
+    // publication — a sealed answer must never travel early — so the only way
+    // to see them arrive is to ask.
+    //
+    // The rate is not constant. While the room is writing or voting, the host
+    // is watching a counter to decide when to move on, and four seconds of lag
+    // on "8 of 9" is four seconds of a host wondering whether someone is stuck.
+    // Every other phase changes only when the host does something, and that
+    // already arrives over realtime.
+    let timer = 0;
+    const WAITING_ON_PEOPLE: RoundPhase[] = ['submitting', 'voting'];
+    let interval = 4000;
+
+    const loop = async () => {
+      await push();
+      if (stopped) return;
+      interval = WAITING_ON_PEOPLE.includes(lastPhase) ? 1200 : 4000;
+      timer = window.setTimeout(loop, interval);
+    };
+
+    void loop();
 
     return () => {
       stopped = true;
-      window.clearInterval(tick);
+      window.clearTimeout(timer);
       this.client.removeChannel(channel);
       this.channels.delete(gameId);
     };

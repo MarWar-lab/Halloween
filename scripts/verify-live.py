@@ -175,6 +175,12 @@ call("POST", "/rest/v1/rpc/cast_vote", tok_a,
 call("POST", "/rest/v1/rpc/cast_vote", tok_b,
      {"p_round": round_id, "p_submission": by_text["ANA_SECRET_ANSWER"]})
 
+# The host watches this number to know when to close voting, so it has to
+# move. It is the vote half of round_progress, which nothing tested before.
+prog_v = one(call("POST", "/rest/v1/rpc/round_progress", tok_a, {"p_round": round_id}))
+check("round_progress names who has voted", len((prog_v or {}).get("voted") or []) == 2,
+      f"{len((prog_v or {}).get('voted') or [])} of 2")
+
 resolved = call("GET", f"/rest/v1/votes?round_id=eq.{round_id}&select=target_player_id", tok_b)
 check("the server resolved the author from the answer",
       isinstance(resolved, list) and resolved and resolved[0]["target_player_id"] == pa["id"],
