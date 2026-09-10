@@ -9,8 +9,8 @@ const subs: Submission[] = [
 ];
 
 const votes: Vote[] = [
-  { id: 'v1', roundId: 'r', voterId: 'me', targetPlayerId: 'other', score: null, guessPlayerId: null },
-  { id: 'v2', roundId: 'r', voterId: 'other', targetPlayerId: 'me', score: null, guessPlayerId: null },
+  { id: 'v1', roundId: 'r', voterId: 'me', submissionId: 's2', targetPlayerId: 'other', score: null, guessPlayerId: null },
+  { id: 'v2', roundId: 'r', voterId: 'other', submissionId: 's1', targetPlayerId: 'me', score: null, guessPlayerId: null },
 ];
 
 describe('submission sealing', () => {
@@ -33,6 +33,28 @@ describe('submission sealing', () => {
     // This is a regression test: the first implementation sealed answers again
     // during `voting`, which left the vote buttons with nothing to point at.
     expect(visibleSubmissions(subs, 'voting', 'me')).toHaveLength(2);
+  });
+
+  it('hands out the answers without the names attached', () => {
+    // Voting for the funniest answer only means anything while nobody can see
+    // whose it is. An author id in the payload defeats the mechanic even if no
+    // component ever renders it.
+    const seen = visibleSubmissions(subs, 'voting', 'me');
+    expect(seen.find((s) => s.id === 's2')!.playerId).toBeNull();
+    // Your own answer stays identifiable, so the UI can stop you voting for it.
+    expect(seen.find((s) => s.id === 's1')!.playerId).toBe('me');
+  });
+
+  it('names the authors once the round is scored', () => {
+    const seen = visibleSubmissions(subs, 'scored', 'me');
+    expect(seen.find((s) => s.id === 's2')!.playerId).toBe('other');
+  });
+
+  it('never names an author to the shared screen mid-round', () => {
+    // The Stage has no seat, so *every* answer is somebody else's.
+    for (const phase of ['revealing', 'voting'] as RoundPhase[]) {
+      expect(visibleSubmissions(subs, phase, null).map((s) => s.playerId)).toEqual([null, null]);
+    }
   });
 
   it('shows a spectator with no seat nothing until the reveal', () => {

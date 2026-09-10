@@ -2,7 +2,14 @@ import { useEffect, useRef } from 'react';
 import type { CharacterLook } from '../game/types';
 import type { Theme } from '../game/themes';
 import { drawCharacter, drawNameplate, type CharState } from './character';
-import { drawBackdrop, drawFire, drawFireGlow } from './fire';
+import {
+  drawBackdrop,
+  drawFire,
+  drawFireGlow,
+  drawRitualEffects,
+  drawSceneDecor,
+  type RitualEffects,
+} from './fire';
 
 export interface SceneCharacter {
   id: string;
@@ -24,6 +31,8 @@ export interface CampfireSceneProps {
   zoom?: number;
   /** The customiser hides the fire so nothing competes with the character. */
   showFire?: boolean;
+  /** Anonymous stage rituals: progress embers, vote candles, mood flares. */
+  ritual?: RitualEffects | null;
   className?: string;
 }
 
@@ -50,9 +59,13 @@ function seatPositions(count: number, w: number, h: number): Seat[] {
   // The ring sits well above the fire: a shallow ellipse reads as a straight
   // line of people, and a fire drawn at the same height swallows whoever is
   // seated directly behind it — which is exactly where the speaker ends up.
-  const cy = h * 0.62;
-  const rx = w * 0.32;
-  const ry = h * 0.22;
+  // The seats only ever use the *upper* half of this ellipse (see the angle
+  // range below), so `cy` is where the nearest seat stands, not the middle of
+  // the group. Placed too high and the tallest hat is cropped by the top of
+  // the canvas — which is how a witch loses her point.
+  const cy = h * 0.72;
+  const rx = w * 0.34;
+  const ry = h * 0.19;
 
   // One ring is comfortable up to nine; beyond that, split evenly into two.
   // An unbalanced split (nine in front, one behind) reads as a mistake rather
@@ -107,13 +120,14 @@ export function CampfireScene({
   showNames = true,
   zoom = 1,
   showFire = true,
+  ritual = null,
   className,
 }: CampfireSceneProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Kept in a ref so the animation loop is started once and never restarted by
   // a re-render — restarting it on every state change would reset the fire.
-  const propsRef = useRef({ characters, theme, fireScale, showNames, zoom, showFire });
-  propsRef.current = { characters, theme, fireScale, showNames, zoom, showFire };
+  const propsRef = useRef({ characters, theme, fireScale, showNames, zoom, showFire, ritual });
+  propsRef.current = { characters, theme, fireScale, showNames, zoom, showFire, ritual };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -148,6 +162,7 @@ export function CampfireScene({
       const {
         characters: cast, theme: th, fireScale: fs,
         showNames: names, zoom: mag, showFire: fire,
+        ritual: sceneRitual,
       } = propsRef.current;
 
       ctx.clearRect(0, 0, width, height);
@@ -155,10 +170,19 @@ export function CampfireScene({
 
       const fireX = width / 2;
       const fireY = height * 0.74;
-      const sizeScale = Math.min(width / 700, height / 430);
+      const sizeScale = Math.min(width / 700, height / 360);
       const s = Math.max(0.45, Math.min(1.4, sizeScale)) * mag;
+      const fireBoost =
+        sceneRitual &&
+        ((sceneRitual.submitTotal > 0 && sceneRitual.sealed >= sceneRitual.submitTotal) ||
+          (sceneRitual.voteTotal > 0 && sceneRitual.voted >= sceneRitual.voteTotal) ||
+          sceneRitual.mood === 'scored' ||
+          sceneRitual.mood === 'finale')
+          ? 1.12
+          : 1;
 
-      if (fire) drawFireGlow(ctx, fireX, fireY, 300 * s * fs, th, t, reduceMotion);
+      if (fire) drawFireGlow(ctx, fireX, fireY, 300 * s * fs * fireBoost, th, t, reduceMotion);
+      if (fire) drawSceneDecor(ctx, width, height, th, t, reduceMotion);
 
       const seats = seatPositions(cast.length, width, height);
 
@@ -185,7 +209,15 @@ export function CampfireScene({
       }
 
       if (fire) {
-        drawFire(ctx, { x: fireX, y: fireY, scale: s * fs * 1.3, t, theme: th, reduceMotion });
+        drawFire(ctx, {
+          x: fireX,
+          y: fireY,
+          scale: s * fs * 1.3 * fireBoost,
+          t,
+          theme: th,
+          reduceMotion,
+        });
+        drawRitualEffects(ctx, width, height, th, sceneRitual, t, reduceMotion);
       }
 
       // Nameplates last, so nobody's label is hidden behind a neighbour.

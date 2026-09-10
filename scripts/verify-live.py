@@ -74,6 +74,19 @@ b = call("POST", "/auth/v1/signup", body={})
 tok_a, tok_b = a.get("access_token"), b.get("access_token")
 check("two anonymous sessions", bool(tok_a and tok_b and tok_a != tok_b))
 
+print("\n=== the schema is up to date ===")
+# 0003 is what keeps answers anonymous. Without it the game still runs, and
+# quietly tells every client who wrote what — so stop here rather than
+# reporting a wall of confusing failures.
+probe = call("POST", "/rest/v1/rpc/round_progress", tok_a,
+             {"p_round": "00000000-0000-0000-0000-000000000000"})
+if isinstance(probe, dict) and probe.get("__error__") in (404, 400):
+    print("  FAIL  migration 0003 has not been applied")
+    print("\n  Run supabase/migrations/0003_anonymity.sql in the Supabase SQL editor,")
+    print("  then run this again. Until then, answers are NOT anonymous.")
+    raise SystemExit(1)
+check("migration 0003 is applied", True)
+
 print("\n=== host creates a game ===")
 game = one(call("POST", "/rest/v1/rpc/create_game",
                 tok_a, {"p_deck": "halloween", "p_theme": "halloween"}))
@@ -122,16 +135,63 @@ check("Ben sees exactly one submission (his own)", len(texts) == 1, f"saw {texts
 check("Ben CANNOT read Ana's sealed answer", "ANA_SECRET_ANSWER" not in texts,
       "leaked!" if "ANA_SECRET_ANSWER" in texts else "sealed")
 
+print("\n=== the host can see progress without seeing answers ===")
+# The host has to know when everyone has finished writing, or the game cannot
+# be run at all. Knowing *that* someone answered is not knowing *what*.
+prog = one(call("POST", "/rest/v1/rpc/round_progress", tok_a, {"p_round": round_id}))
+submitted = (prog or {}).get("submitted") or []
+check("round_progress names who has answered", len(submitted) == 2, f"{len(submitted)} of 2")
+check("progress carries no answer text", "text" not in json.dumps(prog or {}))
+
 print("\n=== host reveals ===")
 call("POST", "/rest/v1/rpc/advance_round", tok_a, {"p_round": round_id, "p_phase": "revealing"})
-seen_by_b = call("GET", f"/rest/v1/submissions?round_id=eq.{round_id}&select=text", tok_b)
-texts = [s["text"] for s in seen_by_b] if isinstance(seen_by_b, list) else []
+revealed = call("POST", "/rest/v1/rpc/round_submissions", tok_b, {"p_round": round_id})
+texts = [s["text"] for s in revealed] if isinstance(revealed, list) else []
 check("after reveal Ben sees both", len(texts) == 2, f"saw {len(texts)}")
+
+print("\n=== THE ANONYMITY TEST — the reveal must not name the author ===")
+# Voting for the funniest answer only means anything while nobody knows whose
+# it is. Row-level security cannot hide a column, so this goes through
+# round_submissions() rather than a select on the table.
+others = [r for r in (revealed or []) if r["text"] != "BEN_SECRET_ANSWER"]
+check("Ana's answer reaches Ben with no author attached",
+      len(others) == 1 and others[0]["player_id"] is None,
+      f"player_id {others[0]['player_id'] if others else 'missing'}")
+check("Ben can still identify his own answer",
+      any(r["player_id"] == pb["id"] for r in (revealed or []) if r["text"] == "BEN_SECRET_ANSWER"))
+
+direct = call("GET", f"/rest/v1/submissions?round_id=eq.{round_id}&select=text,player_id", tok_b)
+check("and the table itself still refuses to hand over anyone else's row",
+      isinstance(direct, list) and len(direct) == 1,
+      f"saw {len(direct) if isinstance(direct, list) else direct}")
 
 print("\n=== voting, and the vote-sealing test ===")
 call("POST", "/rest/v1/rpc/advance_round", tok_a, {"p_round": round_id, "p_phase": "voting"})
-call("POST", "/rest/v1/rpc/cast_vote", tok_a, {"p_round": round_id, "p_target": pb["id"]})
-call("POST", "/rest/v1/rpc/cast_vote", tok_b, {"p_round": round_id, "p_target": pa["id"]})
+
+# Voters pick an answer, never a person — they were never told whose it was.
+by_text = {r["text"]: r["id"] for r in (revealed or [])}
+call("POST", "/rest/v1/rpc/cast_vote", tok_a,
+     {"p_round": round_id, "p_submission": by_text["BEN_SECRET_ANSWER"]})
+call("POST", "/rest/v1/rpc/cast_vote", tok_b,
+     {"p_round": round_id, "p_submission": by_text["ANA_SECRET_ANSWER"]})
+
+resolved = call("GET", f"/rest/v1/votes?round_id=eq.{round_id}&select=target_player_id", tok_b)
+check("the server resolved the author from the answer",
+      isinstance(resolved, list) and resolved and resolved[0]["target_player_id"] == pa["id"],
+      str(resolved)[:80])
+
+own = call("POST", "/rest/v1/rpc/cast_vote", tok_b,
+           {"p_round": round_id, "p_submission": by_text["BEN_SECRET_ANSWER"]})
+check("voting for your own answer is refused", isinstance(own, dict) and "__error__" in own,
+      str(own)[:90])
+
+# Changing your mind must replace your vote, not add a second one.
+call("POST", "/rest/v1/rpc/cast_vote", tok_b,
+     {"p_round": round_id, "p_submission": by_text["ANA_SECRET_ANSWER"]})
+mine_now = call("GET", f"/rest/v1/votes?round_id=eq.{round_id}&voter_id=eq.{pb['id']}&select=id", tok_b)
+check("a second vote replaces the first rather than counting twice",
+      isinstance(mine_now, list) and len(mine_now) == 1,
+      f"{len(mine_now) if isinstance(mine_now, list) else mine_now} vote rows")
 votes_b = call("GET", f"/rest/v1/votes?round_id=eq.{round_id}&select=voter_id", tok_b)
 check("Ben sees only his own vote while voting is open",
       isinstance(votes_b, list) and len(votes_b) == 1, f"saw {len(votes_b) if isinstance(votes_b, list) else votes_b}")
@@ -156,6 +216,21 @@ votes_after = call("GET", f"/rest/v1/votes?round_id=eq.{round_id}&select=voter_i
 check("votes open up once scored",
       isinstance(votes_after, list) and len(votes_after) == 2,
       f"saw {len(votes_after) if isinstance(votes_after, list) else votes_after}")
+
+print("\n=== the Pass ends the turn and costs nothing ===")
+solo = one(call("POST", "/rest/v1/rpc/start_round", tok_a, {
+    "p_game": game_id, "p_card": "the-sound", "p_mechanic": "solo",
+    "p_lane": "say", "p_turn": pb["id"], "p_phase": "choosing", "p_secs": None,
+}))
+before = one(call("GET", f"/rest/v1/players?id=eq.{pb['id']}&select=score", tok_b))
+call("POST", "/rest/v1/rpc/spend_pass", tok_b, {"p_game": game_id})
+after = one(call("GET", f"/rest/v1/players?id=eq.{pb['id']}&select=score,pass_spent", tok_b))
+closed = one(call("GET", f"/rest/v1/rounds?id=eq.{solo['id']}&select=phase", tok_b))
+check("the Pass costs exactly zero points",
+      after and after["score"] == before["score"], f"{before['score']} -> {after['score']}")
+check("the Pass is recorded", bool(after and after["pass_spent"]))
+check("the Pass actually closes the card", closed and closed["phase"] == "scored",
+      f"phase {closed['phase'] if closed else '?'}")
 
 print(f"\n{'=' * 60}\n  {len(passed)} passed, {len(failed)} failed")
 if failed:

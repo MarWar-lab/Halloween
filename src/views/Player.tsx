@@ -1,12 +1,18 @@
 import { useEffect, useState } from 'react';
 import { themeById } from '../game/themes';
+import { turnFor } from '../game/turn';
+import type { Submission } from '../game/types';
 import { CampfireScene } from '../scene/Campfire';
 import type { Campfire } from '../state/useCampfire';
-import { CardPanel, Countdown, Leaderboard, ReactionBar, cardFor, nameOf } from './shared';
+import type { GameSnapshot, VoteInput } from '../net';
+import { CardPanel, Countdown, HowToPlay, Leaderboard, ReactionBar, cardFor } from './shared';
 
 /**
- * The player's own device. Phone-first: one job on screen at a time, big
- * targets, and never anything the Stage has not revealed yet.
+ * The player's own device. Phone-first, and built on one rule: the screen
+ * shows the single thing you are being asked for, and nothing else.
+ *
+ * What is on screen is decided by `turnFor`, not by conditionals scattered
+ * through this file — see src/game/turn.ts for why.
  */
 export function Player({ campfire }: { campfire: Campfire }) {
   const snap = campfire.snapshot;
@@ -14,7 +20,6 @@ export function Player({ campfire }: { campfire: Campfire }) {
   const myId = campfire.session?.playerId ?? null;
 
   const [draft, setDraft] = useState('');
-  const [sent, setSent] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
   const round = snap?.round ?? null;
@@ -22,7 +27,6 @@ export function Player({ campfire }: { campfire: Campfire }) {
   // A new round means a new answer box.
   useEffect(() => {
     setDraft('');
-    setSent(false);
     setProblem(null);
   }, [round?.id]);
 
@@ -31,8 +35,18 @@ export function Player({ campfire }: { campfire: Campfire }) {
   const theme = themeById(snap.game.themeId);
   const me = snap.players.find((p) => p.id === myId);
   const card = cardFor(snap.game.deckId, round?.cardId);
-  const isUp = round?.turnPlayerId === myId || round?.opponentId === myId;
-  const myVotes = snap.votes.filter((v) => v.voterId === myId);
+
+  const turn = turnFor({
+    round,
+    card,
+    me,
+    submissions: snap.submissions,
+    submittedPlayerIds: snap.submittedPlayerIds,
+    votedPlayerIds: snap.votedPlayerIds,
+    players: snap.players,
+    theme,
+    inLobby: snap.game.phase === 'lobby',
+  });
 
   const act = async (fn: () => Promise<void>) => {
     setProblem(null);
@@ -43,10 +57,13 @@ export function Player({ campfire }: { campfire: Campfire }) {
     }
   };
 
+  const vote = (v: VoteInput) => void act(() => backend.castVote(round!.id, v));
+  const spotlight = turn.task.kind === 'perform' || turn.task.kind === 'brace';
+
   return (
-    <main className="player">
+    <main className={`player ${spotlight ? 'player-lit' : ''}`}>
       <header className="player-head">
-        <div>
+        <div className="player-who">
           <span className="eyebrow">{snap.game.code}</span>
           <strong>{me?.name ?? 'You'}</strong>
         </div>
@@ -58,225 +75,189 @@ export function Player({ campfire }: { campfire: Campfire }) {
 
       {problem && <p className="form-error">{problem}</p>}
 
+      {/* The instruction is the loudest thing on the screen, above the card.
+          On a phone, held under a desk, mid-call, it is often the only thing
+          that gets read. */}
       <section className="player-body" aria-live="polite">
-        {snap.game.phase === 'lobby' && (
-          <div className="player-wait">
-            <CampfireScene
-              characters={[{ id: myId, name: me?.name ?? 'You', look: me?.look ?? { body: 0, topper: 0, top: 0, accessory: 0 }, state: 'idle' }]}
-              theme={theme}
-              showNames={false}
-              className="player-canvas"
-            />
-            <h2>You&rsquo;re in</h2>
-            <p className="muted">
-              {snap.players.length} around the fire. The host starts when everyone has arrived.
-            </p>
+        <div className="task">
+          <h2 className="task-head">{turn.headline}</h2>
+          {turn.detail && <p className="task-detail">{turn.detail}</p>}
+          <Countdown round={round} big />
+        </div>
+
+        {snap.game.phase === 'lobby' && me && (
+          <CampfireScene
+            characters={[{ id: myId, name: me.name, look: me.look, state: 'idle' }]}
+            theme={theme}
+            zoom={1.8}
+            showFire={false}
+            showNames={false}
+            className="player-canvas"
+          />
+        )}
+
+        {card && round && <CardPanel card={card} theme={theme} />}
+
+        {turn.task.kind === 'write' && (
+          <div className="answer">
+            <label className="field">
+              <span>{turn.task.hint}</span>
+              <textarea
+                rows={4}
+                value={draft}
+                maxLength={600}
+                onChange={(e) => setDraft(e.target.value)}
+                placeholder="Nobody sees this until the reveal."
+                autoFocus
+              />
+            </label>
+            <button
+              className="btn btn-primary btn-block"
+              disabled={!draft.trim()}
+              onClick={() => void act(() => backend.submitAnswer(round!.id, draft.trim()))}
+            >
+              {snap.submittedPlayerIds.includes(myId) ? 'Update my answer' : 'Seal it'}
+            </button>
           </div>
         )}
 
-        {snap.game.phase !== 'lobby' && !round && (
-          <p className="muted player-wait">Waiting for the next card…</p>
+        {turn.task.kind === 'rate' && (
+          <div className="rate">
+            {[1, 2, 3, 4, 5].map((n) => (
+              <button
+                key={n}
+                className={`score-btn ${myScore(snap, myId) === n ? 'chosen' : ''}`}
+                onClick={() => vote({ score: n })}
+              >
+                {n}
+              </button>
+            ))}
+            <span className="rate-legend">
+              <span>barely tried</span>
+              <span>fully committed</span>
+            </span>
+          </div>
         )}
 
-        {round && card && (
-          <>
-            {isUp && round.phase !== 'scored' && (
-              <p className="youre-up">You&rsquo;re up.</p>
-            )}
-
-            <CardPanel
-              card={card}
-              theme={theme}
-              subtitle={
-                round.turnPlayerId && !isUp ? nameOf(snap.players, round.turnPlayerId) : undefined
-              }
-            />
-
-            <Countdown round={round} big />
-
-            {round.phase === 'submitting' && (
-              <div className="answer">
-                <label className="field">
-                  <span>{card.submitHint ?? 'Your answer'}</span>
-                  <textarea
-                    rows={4}
-                    value={draft}
-                    maxLength={600}
-                    onChange={(e) => setDraft(e.target.value)}
-                    placeholder="Nobody sees this until the reveal."
-                  />
-                </label>
+        {turn.task.kind === 'sideWithOne' && round && (
+          <div className="pick-list">
+            {[round.turnPlayerId, round.opponentId]
+              .filter((id): id is string => Boolean(id))
+              .map((id) => (
                 <button
-                  className="btn btn-primary"
-                  disabled={!draft.trim()}
-                  onClick={() =>
-                    void act(async () => {
-                      await backend.submitAnswer(round.id, draft.trim());
-                      setSent(true);
-                    })
+                  key={id}
+                  className={`pick ${votedFor(snap, myId) === id ? 'chosen' : ''}`}
+                  onClick={() => vote({ targetPlayerId: id })}
+                >
+                  {snap.players.find((p) => p.id === id)?.name ?? 'Someone'}
+                </button>
+              ))}
+          </div>
+        )}
+
+        {turn.task.kind === 'pick' && (
+          <div className="pick-list">
+            {theirs(snap, myId).map((s, i) => (
+              <button
+                key={s.id}
+                className={`pick pick-answer ${votedForSubmission(snap, myId) === s.id ? 'chosen' : ''}`}
+                onClick={() => vote({ submissionId: s.id })}
+              >
+                <span className="reveal-num">{i + 1}</span>
+                <span className="pick-text">{s.text}</span>
+              </button>
+            ))}
+            {theirs(snap, myId).length === 0 && (
+              <p className="muted">Nothing to vote on — nobody else answered.</p>
+            )}
+          </div>
+        )}
+
+        {turn.task.kind === 'guess' && (
+          <ul className="guess-list">
+            {theirs(snap, myId).map((s, i) => (
+              <li key={s.id}>
+                <span className="reveal-num">{i + 1}</span>
+                <span className="pick-text">{s.text}</span>
+                <select
+                  value={guessFor(snap, myId, s.id) ?? ''}
+                  onChange={(e) =>
+                    e.target.value && vote({ submissionId: s.id, guessPlayerId: e.target.value })
                   }
                 >
-                  {sent ? 'Update my answer' : 'Seal it'}
-                </button>
-                {sent && <p className="muted small">Sealed. You can still change it until time.</p>}
-              </div>
-            )}
-
-            {round.phase === 'revealing' && (
-              <p className="muted">Answers are going up on the shared screen.</p>
-            )}
-
-            {round.phase === 'voting' && (
-              <Voting
-                snapshot={snap}
-                myId={myId}
-                onVote={(vote) => void act(() => backend.castVote(round.id, vote))}
-                voted={myVotes.length > 0}
-              />
-            )}
-
-            {round.phase === 'scored' && (
-              <div className="my-result">
-                <h2>
-                  {round.results?.points[myId]
-                    ? `+${round.results.points[myId]} to you`
-                    : 'No points that round'}
-                </h2>
-                {round.results?.notes?.[myId] && (
-                  <p className="muted">{round.results.notes[myId]}</p>
-                )}
-              </div>
-            )}
-          </>
+                  <option value="" disabled>
+                    Who wrote it?
+                  </option>
+                  {snap.players
+                    .filter((p) => p.id !== myId)
+                    .map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
+                    ))}
+                </select>
+              </li>
+            ))}
+          </ul>
         )}
+
+        {turn.task.kind === 'result' && round && (
+          <div className="my-result">
+            <h2>
+              {round.results?.points[myId]
+                ? `+${round.results.points[myId]} to you`
+                : 'No points that round'}
+            </h2>
+            {round.results?.notes?.[myId] && <p className="muted">{round.results.notes[myId]}</p>}
+          </div>
+        )}
+
+        {/* Nothing to press means nothing is shown. The reaction bar below is
+            always there, so a spectating player is never fully mute. This
+            hint is for the audience only — telling the person who is *up* to
+            watch the shared screen is the last thing they need. */}
+        {turn.task.kind === 'idle' && <p className="idle-hint muted">Watch the shared screen.</p>}
       </section>
 
       <footer className="player-foot">
         <ReactionBar onReact={(emoji) => backend.react(snap.game.id, emoji)} />
-        <div className="player-tools">
-          {me && !me.passSpent && round && round.phase !== 'scored' && (
-            <button
-              className="btn btn-sm"
-              onClick={() => void act(() => backend.spendPass(snap.game.id))}
-            >
-              Use my {theme.vocab.pass}
-            </button>
-          )}
-          {me?.passSpent && <span className="muted small">{theme.vocab.pass} spent</span>}
+
+        {turn.canPass && (
+          <button
+            className="btn btn-pass"
+            onClick={() => void act(() => backend.spendPass(snap.game.id))}
+          >
+            Use my {theme.vocab.pass}
+            <span>Ends this card. Costs you nothing.</span>
+          </button>
+        )}
+
+        <div className="player-drawers">
+          <details className="player-scores">
+            <summary>Standing</summary>
+            <Leaderboard players={snap.players} present={snap.present} />
+          </details>
+          <HowToPlay theme={theme} />
         </div>
-        <details className="player-scores">
-          <summary>Standing</summary>
-          <Leaderboard players={snap.players} present={snap.present} />
-        </details>
       </footer>
     </main>
   );
 }
 
-function Voting({
-  snapshot,
-  myId,
-  onVote,
-  voted,
-}: {
-  snapshot: import('../net').GameSnapshot;
-  myId: string;
-  onVote: (vote: { targetPlayerId?: string; score?: number; guessPlayerId?: string }) => void;
-  voted: boolean;
-}) {
-  const round = snapshot.round;
-  if (!round) return null;
+/** Everyone else's answers, in a stable order, never including your own. */
+const theirs = (snap: GameSnapshot, myId: string): Submission[] =>
+  snap.submissions.filter((s) => s.playerId !== myId);
 
-  if (round.mechanic === 'solo') {
-    if (round.turnPlayerId === myId) {
-      return <p className="muted">You can&rsquo;t score your own turn. Sit tight.</p>;
-    }
-    return (
-      <div className="vote-block">
-        <p className="vote-ask">How did that go?</p>
-        <div className="score-buttons">
-          {[1, 2, 3, 4, 5].map((n) => (
-            <button key={n} className="btn score-btn" onClick={() => onVote({ score: n })}>
-              {n}
-            </button>
-          ))}
-        </div>
-        <p className="muted small">
-          1 is barely tried, 5 is fully committed. Commitment beats quality — that&rsquo;s the
-          whole scoring philosophy.
-        </p>
-        {voted && <p className="muted small">Vote recorded. Change it any time before scoring.</p>}
-      </div>
-    );
-  }
+const myVotes = (snap: GameSnapshot, myId: string) =>
+  snap.votes.filter((v) => v.voterId === myId);
 
-  if (round.mechanic === 'duel') {
-    const options = [round.turnPlayerId, round.opponentId].filter(Boolean) as string[];
-    return (
-      <div className="vote-block">
-        <p className="vote-ask">Who took it?</p>
-        <div className="vote-options">
-          {options.map((id) => (
-            <button
-              key={id}
-              className="btn vote-option"
-              disabled={id === myId}
-              onClick={() => onVote({ targetPlayerId: id })}
-            >
-              {nameOf(snapshot.players, id)}
-            </button>
-          ))}
-        </div>
-      </div>
-    );
-  }
+const myScore = (snap: GameSnapshot, myId: string) => myVotes(snap, myId)[0]?.score ?? null;
 
-  // all-play and guess-who both vote on the revealed answers.
-  const mine = snapshot.submissions.find((s) => s.playerId === myId);
-  const options = snapshot.submissions.filter((s) => s.id !== mine?.id);
+const votedFor = (snap: GameSnapshot, myId: string) =>
+  myVotes(snap, myId)[0]?.targetPlayerId ?? null;
 
-  if (options.length === 0) {
-    return <p className="muted">Nothing to vote on yet.</p>;
-  }
+const votedForSubmission = (snap: GameSnapshot, myId: string) =>
+  myVotes(snap, myId)[0]?.submissionId ?? null;
 
-  return (
-    <div className="vote-block">
-      <p className="vote-ask">
-        {round.mechanic === 'guesswho' ? 'Whose is this?' : 'Which one got you?'}
-      </p>
-      <ul className="vote-options vote-list">
-        {options.map((s, i) => (
-          <li key={s.id}>
-            <span className="reveal-num">{i + 1}</span>
-            <span className="vote-text">{s.text}</span>
-            {round.mechanic === 'guesswho' ? (
-              <select
-                defaultValue=""
-                onChange={(e) =>
-                  e.target.value &&
-                  onVote({ targetPlayerId: s.playerId, guessPlayerId: e.target.value })
-                }
-              >
-                <option value="" disabled>
-                  Guess…
-                </option>
-                {snapshot.players
-                  .filter((p) => p.id !== myId)
-                  .map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.name}
-                    </option>
-                  ))}
-              </select>
-            ) : (
-              <button className="btn btn-sm" onClick={() => onVote({ targetPlayerId: s.playerId })}>
-                This one
-              </button>
-            )}
-          </li>
-        ))}
-      </ul>
-      {voted && <p className="muted small">Vote recorded.</p>}
-    </div>
-  );
-}
+const guessFor = (snap: GameSnapshot, myId: string, submissionId: string) =>
+  myVotes(snap, myId).find((v) => v.submissionId === submissionId)?.guessPlayerId ?? null;

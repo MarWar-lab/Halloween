@@ -36,6 +36,32 @@ export interface FireOptions {
   reduceMotion?: boolean;
 }
 
+export type RitualMood =
+  | 'idle'
+  | 'submitting'
+  | 'revealing'
+  | 'voting'
+  | 'scored'
+  | 'guesswho'
+  | 'finale';
+
+export type AtmosphereCue = 'hush' | 'drumroll' | 'cheer' | 'reveal';
+
+export interface RitualEffects {
+  /** Anonymous count of sealed answers. */
+  sealed: number;
+  /** People expected to answer. */
+  submitTotal: number;
+  /** Anonymous count of completed voters. */
+  voted: number;
+  /** People expected to vote. */
+  voteTotal: number;
+  /** How many revealed answers are on the shared screen. */
+  answerCount: number;
+  mood: RitualMood;
+  cue?: AtmosphereCue | null;
+}
+
 export function drawFire(ctx: CanvasRenderingContext2D, o: FireOptions) {
   const { x, y, scale, theme } = o;
   const t = o.reduceMotion ? 0 : o.t;
@@ -175,6 +201,394 @@ export function drawFireGlow(
   ctx.beginPath();
   ctx.arc(x, y, r, 0, Math.PI * 2);
   ctx.fill();
+}
+
+export function drawSceneDecor(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  theme: Theme,
+  t: number,
+  reduceMotion = false,
+) {
+  const graveyard = theme.scene === 'graveyard';
+  const fireX = w / 2;
+  const fireY = h * 0.74;
+  const sizeScale = Math.max(0.65, Math.min(1.35, Math.min(w / 720, h / 440)));
+
+  const pumpkins = graveyard
+    ? [
+        [-190, 34, 0.9, -0.08],
+        [-128, 54, 0.58, 0.12],
+        [136, 48, 0.72, -0.1],
+        [208, 26, 0.82, 0.08],
+        [18, 72, 0.5, 0.02],
+      ]
+    : [
+        [-178, 40, 0.62, -0.08],
+        [180, 38, 0.58, 0.08],
+      ];
+
+  for (let i = 0; i < pumpkins.length; i += 1) {
+    const [dx, dy, s, tilt] = pumpkins[i];
+    drawLittlePumpkin(ctx, fireX + dx * sizeScale, fireY + dy * sizeScale, s * sizeScale, tilt, t, i);
+  }
+
+  if (!graveyard) return;
+
+  const ghosts = [
+    [-265, -105, 0.52, 0],
+    [270, -92, 0.46, 2.4],
+    [-56, -150, 0.38, 4.1],
+  ] as const;
+
+  for (const [dx, dy, s, phase] of ghosts) {
+    const bob = reduceMotion ? 0 : Math.sin(t * 0.9 + phase) * 7;
+    drawAmbientGhost(ctx, fireX + dx * sizeScale, fireY + (dy + bob) * sizeScale, s * sizeScale, t, phase);
+  }
+}
+
+export function drawRitualEffects(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  theme: Theme,
+  ritual: RitualEffects | null | undefined,
+  t: number,
+  reduceMotion = false,
+) {
+  if (!ritual) return;
+  const fireX = w / 2;
+  const fireY = h * 0.74;
+  const sizeScale = Math.max(0.65, Math.min(1.35, Math.min(w / 720, h / 440)));
+
+  if (ritual.mood === 'guesswho') {
+    drawGuessWhoMist(ctx, fireX, fireY - 46 * sizeScale, 250 * sizeScale, t, reduceMotion);
+  }
+
+  if (ritual.sealed > 0 || ritual.submitTotal > 0) {
+    drawSealedEmbers(ctx, fireX, fireY, sizeScale, ritual, theme, t, reduceMotion);
+  }
+
+  if (ritual.voteTotal > 0 || ritual.answerCount > 0) {
+    drawVoteCandles(ctx, fireX, fireY, sizeScale, ritual, theme, t, reduceMotion);
+  }
+
+  if (
+    ritual.mood === 'scored' ||
+    ritual.mood === 'finale' ||
+    (ritual.submitTotal > 0 && ritual.sealed >= ritual.submitTotal) ||
+    (ritual.voteTotal > 0 && ritual.voted >= ritual.voteTotal)
+  ) {
+    drawRitualFlare(ctx, fireX, fireY, 190 * sizeScale, theme, t, reduceMotion);
+  }
+
+  if (ritual.cue) {
+    drawAtmosphereCue(ctx, fireX, fireY, sizeScale, ritual.cue, theme, t, reduceMotion);
+  }
+}
+
+function drawLittlePumpkin(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  s: number,
+  tilt: number,
+  t: number,
+  seed: number,
+) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(tilt);
+  ctx.scale(s, s);
+
+  ctx.fillStyle = 'rgba(0,0,0,0.28)';
+  ctx.beginPath();
+  ctx.ellipse(0, 17, 31, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 26, 22, 0, 0, Math.PI * 2);
+  ctx.fillStyle = '#B85D24';
+  ctx.fill();
+  ctx.strokeStyle = '#130B10';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(35,17,5,0.38)';
+  ctx.lineWidth = 2;
+  for (const rx of [-12, 0, 12]) {
+    ctx.beginPath();
+    ctx.ellipse(rx, 0, 6, 21, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  ctx.beginPath();
+  ctx.moveTo(0, -20);
+  ctx.quadraticCurveTo(6, -29, -3, -33);
+  ctx.strokeStyle = '#4E6B34';
+  ctx.lineWidth = 5;
+  ctx.stroke();
+
+  const glow = 0.55 + Math.sin(t * 4 + seed) * 0.16;
+  ctx.fillStyle = `rgba(255,196,92,${glow})`;
+  for (const ex of [-9, 9]) {
+    ctx.beginPath();
+    ctx.moveTo(ex - 5, -6);
+    ctx.lineTo(ex + 5, -4);
+    ctx.lineTo(ex, 2);
+    ctx.closePath();
+    ctx.fill();
+  }
+  ctx.beginPath();
+  ctx.moveTo(-10, 9);
+  ctx.lineTo(-5, 14);
+  ctx.lineTo(0, 10);
+  ctx.lineTo(5, 14);
+  ctx.lineTo(10, 9);
+  ctx.quadraticCurveTo(0, 18, -10, 9);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawAmbientGhost(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  s: number,
+  t: number,
+  phase: number,
+) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(s, s);
+  ctx.globalAlpha = 0.56;
+
+  const glow = ctx.createRadialGradient(0, -18, 2, 0, -18, 70);
+  glow.addColorStop(0, 'rgba(210,235,255,0.22)');
+  glow.addColorStop(1, 'transparent');
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(0, -18, 70, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(-24, 24);
+  ctx.quadraticCurveTo(-30, -42, 0, -52);
+  ctx.quadraticCurveTo(30, -42, 24, 24);
+  ctx.quadraticCurveTo(16, 32, 10, 22);
+  ctx.quadraticCurveTo(4, 33, -2, 22);
+  ctx.quadraticCurveTo(-10, 34, -16, 22);
+  ctx.quadraticCurveTo(-20, 30, -24, 24);
+  ctx.closePath();
+  ctx.fillStyle = '#DDE4EA';
+  ctx.fill();
+  ctx.strokeStyle = '#130B18';
+  ctx.lineWidth = 3;
+  ctx.stroke();
+
+  ctx.fillStyle = '#120D16';
+  const blink = (t * 0.7 + phase) % 5 > 4.8;
+  for (const ex of [-8, 8]) {
+    ctx.beginPath();
+    if (blink) ctx.ellipse(ex, -21, 5, 1.2, 0, 0, Math.PI * 2);
+    else ctx.ellipse(ex, -21, 4, 6, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.beginPath();
+  ctx.ellipse(0, -6, 3.2, 5.6, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+}
+
+function drawSealedEmbers(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  s: number,
+  ritual: RitualEffects,
+  theme: Theme,
+  t: number,
+  reduceMotion: boolean,
+) {
+  const total = Math.max(ritual.submitTotal, ritual.sealed);
+  if (total <= 0) return;
+
+  const slots = Math.min(18, total);
+  const litSlots = Math.round((ritual.sealed / total) * slots);
+  const rx = 160 * s;
+  const ry = 42 * s;
+
+  for (let i = 0; i < slots; i += 1) {
+    const angle = Math.PI * 0.12 + (Math.PI * 0.76 * i) / Math.max(1, slots - 1);
+    const px = x + Math.cos(angle) * rx;
+    const py = y - 54 * s + Math.sin(angle) * ry;
+    const lit = i < litSlots;
+    const bob = reduceMotion || !lit ? 0 : Math.sin(t * 1.4 + i) * 4 * s;
+
+    ctx.save();
+    ctx.translate(px, py + bob);
+    ctx.rotate((rnd(i * 19) - 0.5) * 0.45);
+    if (lit) {
+      const glow = ctx.createRadialGradient(0, 0, 1, 0, 0, 22 * s);
+      glow.addColorStop(0, `${theme.palette.ember}AA`);
+      glow.addColorStop(1, 'transparent');
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(0, 0, 22 * s, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#EFE6D6';
+      ctx.strokeStyle = '#130B12';
+      ctx.lineWidth = 1.5 * s;
+      ctx.beginPath();
+      ctx.roundRect(-8 * s, -6 * s, 16 * s, 12 * s, 2 * s);
+      ctx.fill();
+      ctx.stroke();
+    } else {
+      ctx.globalAlpha = 0.28;
+      ctx.fillStyle = '#756A77';
+      ctx.beginPath();
+      ctx.arc(0, 0, 3 * s, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+function drawVoteCandles(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  s: number,
+  ritual: RitualEffects,
+  theme: Theme,
+  t: number,
+  reduceMotion: boolean,
+) {
+  const total = Math.max(ritual.voteTotal, ritual.answerCount * 3);
+  if (total <= 0) return;
+
+  const slots = Math.min(24, Math.max(ritual.answerCount * 3, total));
+  const litSlots =
+    ritual.voteTotal > 0 ? Math.round((ritual.voted / ritual.voteTotal) * slots) : 0;
+  const cols = Math.ceil(slots / 2);
+
+  for (let i = 0; i < slots; i += 1) {
+    const row = i % 2;
+    const col = Math.floor(i / 2);
+    const spread = cols <= 1 ? 0 : (col / (cols - 1) - 0.5) * 260 * s;
+    const px = x + spread;
+    const py = y + (38 + row * 20) * s;
+    const lit = i < litSlots;
+
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.fillStyle = '#E7DBC4';
+    ctx.strokeStyle = '#130B12';
+    ctx.lineWidth = 1.4 * s;
+    ctx.beginPath();
+    ctx.roundRect(-4 * s, -13 * s, 8 * s, 20 * s, 2 * s);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle = '#24191B';
+    ctx.fillRect(-0.7 * s, -15 * s, 1.4 * s, 3 * s);
+
+    if (lit) {
+      const flicker = reduceMotion ? 1 : 0.82 + Math.sin(t * 5 + i * 1.4) * 0.18;
+      ctx.globalAlpha = flicker;
+      ctx.beginPath();
+      ctx.moveTo(0, -24 * s);
+      ctx.quadraticCurveTo(-6 * s, -16 * s, 0, -11 * s);
+      ctx.quadraticCurveTo(6 * s, -16 * s, 0, -24 * s);
+      ctx.fillStyle = theme.palette.ember;
+      ctx.fill();
+      ctx.globalAlpha = 1;
+    }
+    ctx.restore();
+  }
+}
+
+function drawGuessWhoMist(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  r: number,
+  t: number,
+  reduceMotion: boolean,
+) {
+  const pulse = reduceMotion ? 1 : 0.88 + Math.sin(t * 1.2) * 0.08;
+  const mist = ctx.createRadialGradient(x, y, 10, x, y, r * pulse);
+  mist.addColorStop(0, 'rgba(95,191,199,0.18)');
+  mist.addColorStop(0.55, 'rgba(95,191,199,0.08)');
+  mist.addColorStop(1, 'transparent');
+  ctx.fillStyle = mist;
+  ctx.beginPath();
+  ctx.arc(x, y, r * pulse, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawRitualFlare(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  r: number,
+  theme: Theme,
+  t: number,
+  reduceMotion: boolean,
+) {
+  const pulse = reduceMotion ? 1 : 0.76 + Math.abs(Math.sin(t * 2.6)) * 0.24;
+  const flare = ctx.createRadialGradient(x, y - r * 0.25, 10, x, y - r * 0.25, r * pulse);
+  flare.addColorStop(0, `${theme.palette.ember}44`);
+  flare.addColorStop(0.45, `${theme.palette.flame}22`);
+  flare.addColorStop(1, 'transparent');
+  ctx.fillStyle = flare;
+  ctx.beginPath();
+  ctx.arc(x, y - r * 0.25, r * pulse, 0, Math.PI * 2);
+  ctx.fill();
+}
+
+function drawAtmosphereCue(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  s: number,
+  cue: AtmosphereCue,
+  theme: Theme,
+  t: number,
+  reduceMotion: boolean,
+) {
+  const pulse = reduceMotion ? 1 : 0.5 + 0.5 * Math.sin(t * 5);
+  if (cue === 'hush') {
+    ctx.save();
+    ctx.translate(x - 260 * s, y - 140 * s);
+    ctx.globalAlpha = 0.35 + pulse * 0.25;
+    drawFog(ctx, 520 * s, 220 * s, 68 * s, t * 1.8, reduceMotion);
+    ctx.restore();
+    return;
+  }
+
+  const sparks = cue === 'drumroll' ? 16 : cue === 'cheer' ? 24 : 10;
+  const colour = cue === 'reveal' ? '#DCE6F5' : theme.palette.ember;
+  ctx.save();
+  ctx.translate(x, y - 38 * s);
+  ctx.strokeStyle = colour;
+  ctx.lineWidth = 2 * s;
+  ctx.globalAlpha = 0.55 + pulse * 0.32;
+  for (let i = 0; i < sparks; i += 1) {
+    const a = (Math.PI * 2 * i) / sparks + t * 0.18;
+    const inner = (cue === 'drumroll' ? 78 : 48) * s;
+    const outer = inner + (18 + rnd(i * 13) * 28) * s;
+    ctx.beginPath();
+    ctx.moveTo(Math.cos(a) * inner, Math.sin(a) * inner);
+    ctx.lineTo(Math.cos(a) * outer, Math.sin(a) * outer);
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 
 // ── the world behind the fire ─────────────────────────────────────────────

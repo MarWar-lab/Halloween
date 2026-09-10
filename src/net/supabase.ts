@@ -82,6 +82,7 @@ const rowToVote = (r: any): Vote => ({
   id: r.id,
   roundId: r.round_id,
   voterId: r.voter_id,
+  submissionId: r.submission_id ?? null,
   targetPlayerId: r.target_player_id,
   score: r.score,
   guessPlayerId: r.guess_player_id,
@@ -113,6 +114,19 @@ export class SupabaseBackend implements Backend {
     if (error && /schema cache|does not exist/i.test(error.message)) {
       throw new BackendError(
         'The database schema has not been applied yet. Run supabase/migrations/0001_init.sql in the SQL editor.',
+        'not_configured',
+      );
+    }
+
+    // 0003 is what keeps answers anonymous. Running without it looks fine
+    // until the first all-play round quietly names every author, so fail
+    // loudly here instead.
+    const { error: anonMissing } = await this.client.rpc('round_progress', {
+      p_round: '00000000-0000-0000-0000-000000000000',
+    });
+    if (anonMissing && /does not exist|schema cache/i.test(anonMissing.message)) {
+      throw new BackendError(
+        'Answers would not be anonymous: run supabase/migrations/0003_anonymity.sql in the SQL editor.',
         'not_configured',
       );
     }
@@ -188,17 +202,29 @@ export class SupabaseBackend implements Backend {
     const allRounds = (roundRows ?? []).map(rowToRound);
     const round = allRounds.length > 0 ? allRounds[0] : null;
 
-    // These selects return only what the policies allow; an empty result during
-    // `submitting` is the sealing working, not a failure.
+    // Answers come through an RPC rather than a select, because the rule is
+    // about a *column*: the row is visible from the reveal, but its author is
+    // not until the round is scored, and a row-level policy cannot express
+    // that. Votes are a plain select — for those the whole row stays sealed.
     let submissions: Submission[] = [];
     let votes: Vote[] = [];
+    let submittedPlayerIds: string[] = [];
+    let votedPlayerIds: string[] = [];
+
     if (round) {
-      const [{ data: subRows }, { data: voteRows }] = await Promise.all([
-        this.client.from('submissions').select('*').eq('round_id', round.id),
+      const [{ data: subRows }, { data: voteRows }, { data: progress }] = await Promise.all([
+        this.client.rpc('round_submissions', { p_round: round.id }),
         this.client.from('votes').select('*').eq('round_id', round.id),
+        this.client.rpc('round_progress', { p_round: round.id }),
       ]);
       submissions = (subRows ?? []).map(rowToSubmission);
       votes = (voteRows ?? []).map(rowToVote);
+
+      // Who has acted, so the host knows when the room is done. Never what
+      // they said.
+      const row = Array.isArray(progress) ? progress[0] : progress;
+      submittedPlayerIds = row?.submitted ?? [];
+      votedPlayerIds = row?.voted ?? [];
     }
 
     const players = (playerRows ?? []).map(rowToPlayer);
@@ -213,6 +239,8 @@ export class SupabaseBackend implements Backend {
       round,
       submissions,
       votes,
+      submittedPlayerIds,
+      votedPlayerIds,
       present,
       usedCardIds: allRounds.map((r) => r.cardId),
       playedPlayerIds: allRounds
@@ -340,6 +368,7 @@ export class SupabaseBackend implements Backend {
       p_score: vote.score ?? null,
       p_guess: vote.guessPlayerId ?? null,
       p_voter: playerId ?? null,
+      p_submission: vote.submissionId ?? null,
     });
     if (error) fail('Could not record your vote', error);
   }

@@ -37,6 +37,71 @@ export function Countdown({ round, big = false }: { round: Round | null; big?: b
   );
 }
 
+/**
+ * The rules, in the order a first-timer needs them.
+ *
+ * Written for someone reading it on a phone thirty seconds before the first
+ * card, because that is when it will actually be read.
+ */
+export function HowToPlay({ theme }: { theme: Theme }) {
+  return (
+    <details className="how-to">
+      <summary>How to play</summary>
+      <div className="how-to-body">
+        <p>
+          Your screen tells you what to do, one thing at a time. When it says
+          nothing, you have nothing to do — that is normal and it is most of the
+          night.
+        </p>
+
+        <h4>The four kinds of card</h4>
+        <dl>
+          <dt>Everyone answers</dt>
+          <dd>
+            You all type an answer privately. They go up on the shared screen
+            with no names on them and everyone votes for a favourite.{' '}
+            <strong>1 point for answering, 2 for every vote you get.</strong>
+          </dd>
+
+          <dt>Guess who</dt>
+          <dd>
+            Same, but you guess who wrote each one.{' '}
+            <strong>2 points per correct guess, 1 for every person you fool.</strong>
+          </dd>
+
+          <dt>One person</dt>
+          <dd>
+            One player takes the card — a {theme.vocab.laneSay.toLowerCase()} or a{' '}
+            {theme.vocab.laneDo.toLowerCase()} — and everyone else scores it 1–5.{' '}
+            <strong>The median becomes their points.</strong> Commitment scores
+            higher than talent.
+          </dd>
+
+          <dt>Duel</dt>
+          <dd>
+            Two players, one prompt, the room picks.{' '}
+            <strong>3 to the winner, 1 each for turning up.</strong>
+          </dd>
+        </dl>
+
+        <h4>The {theme.vocab.pass}</h4>
+        <p>
+          You get one, for the whole night. It ends the card you are on and{' '}
+          <strong>costs you nothing at all</strong> — no points, no penalty, no
+          catch. It is offered only when a card is asking you personally.
+        </p>
+
+        <h4>How the night goes</h4>
+        <p>
+          Cards start easy and get bolder, and never the other way round. You
+          will have watched a dozen people survive something small before
+          anything is asked of you.
+        </p>
+      </div>
+    </details>
+  );
+}
+
 export function Leaderboard({
   players,
   present,

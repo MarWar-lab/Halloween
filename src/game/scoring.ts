@@ -23,7 +23,15 @@ export function median(values: number[]): number {
   return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
 }
 
-/** Drop votes that shouldn't count: self-votes, and duplicates per voter. */
+/**
+ * Drop votes that shouldn't count: the performer scoring themselves, and any
+ * second vote from the same person.
+ *
+ * This is for the one-vote-per-person mechanics. Guess-who is not one of them —
+ * there a player guesses once per answer — so it uses `guessesPerVoter` below.
+ * Running guess-who through here silently discarded every guess but the first,
+ * which made a whole mechanic look like it scored zero.
+ */
 export function validVotes(votes: Vote[], performerId?: string | null): Vote[] {
   const seen = new Set<string>();
   const out: Vote[] = [];
@@ -34,6 +42,20 @@ export function validVotes(votes: Vote[], performerId?: string | null): Vote[] {
     out.push(v);
   }
   return out;
+}
+
+/**
+ * Guess-who votes: at most one guess per voter *per answer*, latest wins, and
+ * never a guess on your own answer.
+ */
+export function guessesPerVoter(votes: Vote[]): Vote[] {
+  const byPair = new Map<string, Vote>();
+  for (const v of votes) {
+    if (!v.targetPlayerId || !v.guessPlayerId) continue;
+    if (v.voterId === v.targetPlayerId) continue;
+    byPair.set(`${v.voterId}::${v.submissionId ?? v.targetPlayerId}`, v);
+  }
+  return [...byPair.values()];
 }
 
 /**
@@ -66,9 +88,12 @@ export function scoreAllplay(submissions: Submission[], votes: Vote[]): RoundRes
   const notes: Record<string, string> = {};
   const authors: Record<string, string> = {};
 
-  const authorOf = new Map<string, string>();
+  // Scoring always runs against unmasked rows on the server; a null author
+  // here would mean the caller passed it a player's censored view by mistake.
+  const authorOf = new Set<string>();
   for (const s of submissions) {
-    authorOf.set(s.playerId, s.playerId);
+    if (!s.playerId) continue;
+    authorOf.add(s.playerId);
     authors[s.id] = s.playerId;
     points[s.playerId] = 1;
   }
@@ -100,17 +125,24 @@ export function scoreAllplay(submissions: Submission[], votes: Vote[]): RoundRes
 export function scoreGuessWho(submissions: Submission[], votes: Vote[]): RoundResults {
   const points: Record<string, number> = {};
   const notes: Record<string, string> = {};
+  const authors: Record<string, string> = {};
 
-  for (const s of submissions) points[s.playerId] = points[s.playerId] ?? 0;
+  for (const s of submissions) {
+    if (!s.playerId) continue;
+    authors[s.id] = s.playerId;
+    points[s.playerId] = points[s.playerId] ?? 0;
+  }
 
   const fooled: Record<string, number> = {};
-  for (const v of validVotes(votes)) {
-    if (!v.guessPlayerId || !v.targetPlayerId) continue;
-    // targetPlayerId carries the true author of the submission being guessed.
-    if (v.guessPlayerId === v.targetPlayerId) {
+  for (const v of guessesPerVoter(votes)) {
+    // targetPlayerId carries the true author of the submission being guessed;
+    // the server resolves it, because the voter is never told it.
+    // guessesPerVoter has already dropped anything with a missing author.
+    const author = v.targetPlayerId as string;
+    if (v.guessPlayerId === author) {
       points[v.voterId] = (points[v.voterId] ?? 0) + 2;
     } else {
-      fooled[v.targetPlayerId] = (fooled[v.targetPlayerId] ?? 0) + 1;
+      fooled[author] = (fooled[author] ?? 0) + 1;
     }
   }
 
@@ -119,7 +151,7 @@ export function scoreGuessWho(submissions: Submission[], votes: Vote[]): RoundRe
     notes[authorId] = `fooled ${count}`;
   }
 
-  return { points, notes };
+  return { points, authors, notes };
 }
 
 /** Duel: the room picks between two players. Three to the winner, one for showing up. */

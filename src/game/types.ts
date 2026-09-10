@@ -138,7 +138,15 @@ export interface Game {
 export interface Submission {
   id: string;
   roundId: string;
-  playerId: string;
+  /**
+   * Null for other people's answers until the round is scored.
+   *
+   * This is the anonymity the all-play and guess-who mechanics are built on,
+   * and it has to be enforced where the data is produced, not where it is
+   * displayed — an author id that reaches the browser has already leaked,
+   * whatever the component chooses to render.
+   */
+  playerId: string | null;
   text: string;
   createdAt: string;
 }
@@ -147,7 +155,15 @@ export interface Vote {
   id: string;
   roundId: string;
   voterId: string;
-  /** allplay/duel: who they voted for. */
+  /**
+   * allplay/guesswho: the answer being voted on. Voters pick an answer, never
+   * a person — they are not told whose it is.
+   */
+  submissionId: string | null;
+  /**
+   * Who the vote resolves to. Set by the server from `submissionId`, so a
+   * client cannot learn an author by reading back its own vote.
+   */
   targetPlayerId: string | null;
   /** solo: 1-5 performance score. */
   score: number | null;

@@ -30,6 +30,15 @@ export interface GameSnapshot {
   /** Only what this viewer is allowed to see at the current phase. */
   submissions: Submission[];
   votes: Vote[];
+  /**
+   * Who has answered and who has voted this round — never what they said.
+   *
+   * The host has to know when the room is done in order to run the game at
+   * all, and sealing hides the content, not the fact that someone finished.
+   * Without this the console reads "0 of 9 answered" for the whole round.
+   */
+  submittedPlayerIds: string[];
+  votedPlayerIds: string[];
   /** Player ids seen recently. Drives "away" in the scene. */
   present: string[];
   /** Cards already dealt this game, so none is drawn twice. */
@@ -49,6 +58,13 @@ export interface StartRoundOptions {
 }
 
 export interface VoteInput {
+  /**
+   * The answer being voted for. Preferred over `targetPlayerId` wherever the
+   * voter is choosing between anonymous answers: the client is not told who
+   * wrote them, so it cannot name a target, and the server resolves the author.
+   */
+  submissionId?: string | null;
+  /** Duel only, where the two contestants are named on screen anyway. */
   targetPlayerId?: string | null;
   score?: number | null;
   guessPlayerId?: string | null;

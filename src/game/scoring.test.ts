@@ -13,6 +13,7 @@ import type { Submission, Vote } from './types';
 const vote = (v: Partial<Vote> & { voterId: string }): Vote => ({
   id: crypto.randomUUID(),
   roundId: 'r1',
+  submissionId: null,
   targetPlayerId: null,
   score: null,
   guessPlayerId: null,

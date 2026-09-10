@@ -22,10 +22,14 @@ import type { Theme } from '../game/themes';
 export type CharState =
   | 'idle'
   | 'listening'
+  | 'thinking'
+  | 'ready'
+  | 'nervous'
   | 'speaking'
   | 'laughing'
   | 'shocked'
   | 'voting'
+  | 'applauding'
   | 'passed'
   | 'winner';
 
@@ -45,6 +49,23 @@ const FRAMES: Record<CharState, number[][]> = {
     [-1, -3, -7, 12, 0, 0, -3, -1, 1, 0],
     [-2, -4, -6, 11, 0, 0, -3, -1, 0, 1],
     [-1, -3, -5, 10, 0, 0, -2, 0, -1, 0],
+  ],
+  thinking: [
+    [0, -2, 16, -8, 0, 0, -2, 0, 1, 1],
+    [-1, -3, 18, -9, 0, 0, -3, -1, 2, 2],
+    [-2, -4, 14, -7, 0, 0, -3, -2, 0, 1],
+    [-1, -2, 17, -8, 0, 0, -2, -1, -1, 0],
+  ],
+  ready: [
+    [-1, 1, -96, 8, 0, 0, 1, -2, 3, 4],
+    [-3, 1, -102, 10, 0, 0, 1, -3, 4, 5],
+    [-1, 0, -92, 8, 0, 0, 0, -2, 2, 3],
+  ],
+  nervous: [
+    [0, -5, 4, 18, 1, -1, -3, 0, 2, 3],
+    [-2, 5, -2, 12, -1, 1, 3, -1, -2, -3],
+    [1, -4, 5, 16, 1, -1, -2, 1, 3, 4],
+    [-1, 4, -3, 14, -1, 1, 2, -1, -3, -2],
   ],
   speaking: [
     [0, 0, -22, 14, 0, 0, 0, -1, 2, 2],
@@ -66,6 +87,12 @@ const FRAMES: Record<CharState, number[][]> = {
     [0, 0, -112, 10, 0, 0, 0, -1, 3, 2],
     [-1, 0, -118, 12, 0, 0, 0, -2, 4, 3],
   ],
+  applauding: [
+    [-2, -1, -62, 62, 0, 0, 0, -2, 4, 5],
+    [-4, 1, -84, 84, 0, 0, 1, -4, 6, 7],
+    [-2, -1, -56, 56, 0, 0, 0, -2, 4, 5],
+    [-1, 0, -76, 76, 0, 0, -1, -1, 5, 6],
+  ],
   passed: [
     [4, 7, 12, -8, 0, 0, 3, 3, 6, 7],
     [5, 8, 14, -6, 0, 0, 4, 4, 7, 8],
@@ -82,10 +109,14 @@ const FRAMES: Record<CharState, number[][]> = {
 const FRAME_MS: Record<CharState, number> = {
   idle: 420,
   listening: 460,
+  thinking: 520,
+  ready: 360,
+  nervous: 110,
   speaking: 150,
   laughing: 130,
   shocked: 320,
   voting: 400,
+  applauding: 120,
   passed: 700,
   winner: 160,
 };
@@ -198,9 +229,16 @@ export function drawCharacter(ctx: CanvasRenderingContext2D, o: DrawCharacterOpt
     drawCloak(ctx, costume, cloth, cloakRot);
     drawLeg(ctx, -8, rLeg, cloth);
     drawLeg(ctx, 8, lLeg, cloth);
-    drawArm(ctx, -15, lArm, cloth, skin, state === 'voting');
+    drawArm(
+      ctx,
+      -15,
+      lArm,
+      cloth,
+      skin,
+      state === 'voting' ? 'paddle' : state === 'ready' ? 'sealed-note' : null,
+    );
     drawTorso(ctx, costume, cloth);
-    drawArm(ctx, 15, rArm, cloth, skin, false);
+    drawArm(ctx, 15, rArm, cloth, skin, state === 'applauding' ? 'clap' : null);
   }
 
   // ── head ────────────────────────────────────────────────────────────────
@@ -220,6 +258,8 @@ export function drawCharacter(ctx: CanvasRenderingContext2D, o: DrawCharacterOpt
     ctx.fillRect(-60, -140, 120, 150);
     ctx.globalCompositeOperation = 'source-over';
   }
+
+  if (state === 'passed') drawPassFog(ctx, o.t, phase, o.reduceMotion);
 
   ctx.restore();
 }
@@ -284,7 +324,7 @@ function drawArm(
   rotation: number,
   cloth: string,
   skin: string,
-  holdingPaddle: boolean,
+  held: 'paddle' | 'sealed-note' | 'clap' | null,
 ) {
   ctx.save();
   ctx.translate(shoulderX, -82);
@@ -303,12 +343,51 @@ function drawArm(
   stroke(ctx, 2);
 
   // A voting paddle, so a silent vote is still visible across the fire.
-  if (holdingPaddle) {
+  if (held === 'paddle') {
     ctx.beginPath();
     ctx.roundRect(-9, 36, 18, 14, 3);
     ctx.fillStyle = '#EFE6D6';
     ctx.fill();
     stroke(ctx, 2);
+  }
+
+  if (held === 'sealed-note') {
+    const glow = ctx.createRadialGradient(0, 42, 1, 0, 42, 18);
+    glow.addColorStop(0, 'rgba(240,168,60,0.55)');
+    glow.addColorStop(1, 'transparent');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(0, 42, 18, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.beginPath();
+    ctx.roundRect(-9, 34, 18, 15, 3);
+    ctx.fillStyle = '#EFE6D6';
+    ctx.fill();
+    stroke(ctx, 1.8);
+    ctx.strokeStyle = '#B9761F';
+    ctx.lineWidth = 1.3;
+    ctx.beginPath();
+    ctx.moveTo(-5, 40);
+    ctx.lineTo(5, 40);
+    ctx.moveTo(-4, 44);
+    ctx.lineTo(4, 44);
+    ctx.stroke();
+  }
+
+  if (held === 'clap') {
+    ctx.strokeStyle = '#F0A83C';
+    ctx.lineWidth = 1.6;
+    for (const [sx, sy, ex, ey] of [
+      [-11, 26, -18, 18],
+      [-7, 22, -8, 12],
+      [8, 22, 9, 12],
+    ] as [number, number, number, number][]) {
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+    }
   }
 
   ctx.restore();
@@ -399,6 +478,30 @@ function drawGhostBody(ctx: CanvasRenderingContext2D, cloth: string, rotation: n
   ctx.restore();
 }
 
+function drawPassFog(
+  ctx: CanvasRenderingContext2D,
+  t: number,
+  phase: number,
+  reduceMotion?: boolean,
+) {
+  const drift = reduceMotion ? 0 : Math.sin(t * 0.55 + phase) * 4;
+
+  ctx.save();
+  ctx.globalAlpha = 0.72;
+  for (let i = 0; i < 3; i += 1) {
+    const y = -55 + i * 17;
+    const r = 25 + i * 5;
+    const fog = ctx.createRadialGradient(drift - 8, y, 4, drift - 8, y, r);
+    fog.addColorStop(0, 'rgba(205,216,230,0.16)');
+    fog.addColorStop(1, 'transparent');
+    ctx.fillStyle = fog;
+    ctx.beginPath();
+    ctx.ellipse(drift - 8 + i * 8, y, r * 1.2, r * 0.42, rad(i * 10), 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
 // ── head and face ─────────────────────────────────────────────────────────
 
 function drawHead(
@@ -477,8 +580,8 @@ function drawFace(
   costume: string,
   reduceMotion?: boolean,
 ) {
-  const wide = state === 'shocked';
-  const squeezed = state === 'laughing';
+  const wide = state === 'shocked' || state === 'nervous';
+  const squeezed = state === 'laughing' || state === 'applauding';
   const shut = blinking(t, phase, reduceMotion) || squeezed;
 
   const browColour = costume === 'mummy' ? '#B9AE97' : '#241A1E';
@@ -518,12 +621,19 @@ function drawFace(
   ctx.strokeStyle = browColour;
   ctx.lineWidth = 2.4;
   const browY = cy - 10;
-  if (state === 'shocked') {
+  if (state === 'shocked' || state === 'nervous') {
     ctx.beginPath();
     ctx.moveTo(-11, browY - 1);
     ctx.quadraticCurveTo(-6.5, browY - 5, -2, browY - 2);
     ctx.moveTo(2, browY - 2);
     ctx.quadraticCurveTo(6.5, browY - 5, 11, browY - 1);
+    ctx.stroke();
+  } else if (state === 'ready') {
+    ctx.beginPath();
+    ctx.moveTo(-11, browY - 2);
+    ctx.lineTo(-2, browY - 3);
+    ctx.moveTo(2, browY - 3);
+    ctx.lineTo(11, browY - 2);
     ctx.stroke();
   } else if (state === 'passed') {
     ctx.beginPath();
@@ -578,11 +688,21 @@ function drawMouth(
       ctx.fill();
       ctx.stroke();
       return;
+    case 'nervous': {
+      const wobble = reduceMotion ? 0 : Math.sin(t * 12 + phase) * 1.2;
+      ctx.moveTo(-5.5, my + 1);
+      ctx.quadraticCurveTo(-2, my - 1 + wobble, 0, my + 1);
+      ctx.quadraticCurveTo(2, my + 3 - wobble, 5.5, my + 1);
+      ctx.stroke();
+      return;
+    }
     case 'passed':
       ctx.moveTo(-4.5, my + 1);
       ctx.quadraticCurveTo(0, my - 1.5, 4.5, my + 1);
       ctx.stroke();
       return;
+    case 'ready':
+    case 'applauding':
     case 'winner':
       ctx.arc(0, my - 3, 7, 0.08 * Math.PI, 0.92 * Math.PI);
       ctx.stroke();

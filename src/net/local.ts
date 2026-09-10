@@ -242,6 +242,12 @@ export class LocalBackend implements Backend {
     if (!doc) return null;
 
     const me = this.myId(gameId);
+    // A host also sees, unmasked, the answers of everyone they are playing
+    // for — they typed them. Without this the console cannot tell which
+    // answer a proxy must not be offered a vote on.
+    const viewer = me
+      ? [me, ...doc.players.filter((p) => p.isProxy && p.controlledBy === me).map((p) => p.id)]
+      : null;
     const round = doc.rounds.length > 0 ? doc.rounds[doc.rounds.length - 1] : null;
 
     // The sealing rules, mirroring the RLS policies exactly.
@@ -252,7 +258,7 @@ export class LocalBackend implements Backend {
         : visibleSubmissions(
             doc.submissions.filter((s) => s.roundId === round.id),
             round.phase,
-            me,
+            viewer,
           );
 
     const votes =
@@ -261,8 +267,13 @@ export class LocalBackend implements Backend {
         : visibleVotes(
             doc.votes.filter((v) => v.roundId === round.id),
             round.phase,
-            me,
+            viewer,
           );
+
+    // Who has acted, from the unfiltered rows. This is the one thing about a
+    // sealed answer that is safe — and necessary — to publish.
+    const roundSubs = round ? doc.submissions.filter((s) => s.roundId === round.id) : [];
+    const roundVotes = round ? doc.votes.filter((v) => v.roundId === round.id) : [];
 
     const cutoff = Date.now() - PRESENCE_TIMEOUT_MS;
     const present = doc.players
@@ -276,6 +287,10 @@ export class LocalBackend implements Backend {
       round,
       submissions,
       votes,
+      submittedPlayerIds: [...new Set(roundSubs.map((s) => s.playerId))].filter(
+        (id): id is string => Boolean(id),
+      ),
+      votedPlayerIds: [...new Set(roundVotes.map((v) => v.voterId))],
       present,
       usedCardIds: doc.rounds.map((r) => r.cardId),
       playedPlayerIds: doc.rounds
@@ -477,14 +492,34 @@ export class LocalBackend implements Backend {
       if (!round || round.phase !== 'voting') {
         throw new BackendError('Voting is closed.', 'closed');
       }
-      // One vote per voter per target, so guess-who can carry several.
+
+      // The voter picks an answer; the server — not the client — works out
+      // whose it was. That is what lets the author stay hidden right through
+      // the vote, which both all-play and guess-who depend on.
+      const submission = vote.submissionId
+        ? doc.submissions.find((s) => s.id === vote.submissionId && s.roundId === roundId)
+        : undefined;
+      if (vote.submissionId && !submission) {
+        throw new BackendError('That answer is no longer in play.', 'closed');
+      }
+      const target = submission ? submission.playerId : (vote.targetPlayerId ?? null);
+      if (target && target === voter) {
+        throw new BackendError('You cannot vote for your own answer.', 'closed');
+      }
+
+      // Guess-who is the only mechanic where one person casts several votes —
+      // one guess per answer — so it is the only one keyed by answer as well
+      // as by voter. Everywhere else a second vote replaces the first.
       const existing = doc.votes.find(
         (v) =>
           v.roundId === roundId &&
           v.voterId === voter &&
-          (v.targetPlayerId ?? null) === (vote.targetPlayerId ?? null),
+          (round.mechanic !== 'guesswho' ||
+            (v.submissionId ?? null) === (vote.submissionId ?? null)),
       );
       if (existing) {
+        existing.submissionId = vote.submissionId ?? null;
+        existing.targetPlayerId = target;
         existing.score = vote.score ?? null;
         existing.guessPlayerId = vote.guessPlayerId ?? null;
         return;
@@ -493,7 +528,8 @@ export class LocalBackend implements Backend {
         id: uid(),
         roundId,
         voterId: voter,
-        targetPlayerId: vote.targetPlayerId ?? null,
+        submissionId: vote.submissionId ?? null,
+        targetPlayerId: target,
         score: vote.score ?? null,
         guessPlayerId: vote.guessPlayerId ?? null,
       });
@@ -502,11 +538,25 @@ export class LocalBackend implements Backend {
 
   async spendPass(gameId: string, playerId?: string) {
     const who = playerId ?? this.myId(gameId);
+    if (!who) throw new BackendError('You are not in this game.');
     if (playerId) this.requireHost(gameId);
     this.mutate(gameId, (doc) => {
       const player = doc.players.find((p) => p.id === who);
+      if (!player) return;
       // Costs nothing. Deliberately no score change here, ever.
-      if (player) player.passSpent = true;
+      player.passSpent = true;
+
+      // And it has to actually do something. A Pass that leaves the card
+      // sitting there with the room staring at you is worse than no Pass:
+      // the player has said no and still has to sit through the silence.
+      const round = doc.rounds[doc.rounds.length - 1];
+      if (!round || round.results) return;
+      const theirTurn = round.turnPlayerId === who || round.opponentId === who;
+      if (!theirTurn) return;
+
+      round.phase = 'scored';
+      round.deadlineAt = null;
+      round.results = { points: {}, notes: { [who]: 'passed — no points, no penalty' } };
     });
   }
 

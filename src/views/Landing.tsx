@@ -7,6 +7,7 @@ import { CampfireScene } from '../scene/Campfire';
 import type { Campfire } from '../state/useCampfire';
 import type { SceneCharacter } from '../scene/Campfire';
 import type { CharState } from '../scene/character';
+import { HowToPlay } from './shared';
 
 type Mode = 'choose' | 'create' | 'join';
 
@@ -90,6 +91,12 @@ export function Landing({ campfire }: { campfire: Campfire }) {
       {mode === 'choose' && (
         <section className="scene-frame">
           <CampfireScene characters={heroCast} theme={theme} className="scene-canvas" />
+        </section>
+      )}
+
+      {mode === 'choose' && (
+        <section className="panel landing-rules">
+          <HowToPlay theme={theme} />
         </section>
       )}
 
