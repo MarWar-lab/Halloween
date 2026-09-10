@@ -51,16 +51,50 @@ export function castFrom(
     const reactionState = reactionStates.get(p.id);
     if (reactionState && state !== 'speaking' && state !== 'winner') state = reactionState;
 
-    if (p.passSpent && state !== 'speaking' && state !== 'winner') state = 'passed';
+    // A Pass is spent once and remembered all night, so this used to leave a
+    // player slumped for every remaining round — overwriting `ready` and
+    // `voting`, which are exactly the postures the room reads to see who has
+    // answered. It should only colour a player who is otherwise doing nothing.
+    if (p.passSpent && (state === 'idle' || state === 'listening')) state = 'passed';
+
+    // A badge, not a pose. Poses say what someone is doing; this says they are
+    // done, and the two have to be sayable at the same time. It carries no
+    // hint of *what* they said.
+    const mark: SceneCharacter['mark'] =
+      round?.phase === 'submitting' && submitted.has(p.id)
+        ? 'sealed'
+        : round?.phase === 'voting' && voted.has(p.id)
+          ? 'voted'
+          : null;
 
     return {
       id: p.id,
       name: p.name,
       look: p.look,
       state,
+      mark,
+      // Dim whoever the room is still waiting on, so "who are we waiting for"
+      // is answerable in one glance across nine seats through a video codec.
+      dim: waiting(round, p.id, submitted, voted),
       away: !p.isProxy && !present.has(p.id),
     };
   });
+}
+
+/** True while this round is still waiting on this player to act. */
+function waiting(
+  round: GameSnapshot['round'],
+  playerId: string,
+  submitted: Set<string>,
+  voted: Set<string>,
+): boolean {
+  if (!round) return false;
+  if (round.phase === 'submitting') return !submitted.has(playerId);
+  if (round.phase === 'voting') {
+    const excused = round.turnPlayerId === playerId || round.opponentId === playerId;
+    return !excused && !voted.has(playerId);
+  }
+  return false;
 }
 
 /** The fire grows across the evening. By the finale it is a bonfire. */

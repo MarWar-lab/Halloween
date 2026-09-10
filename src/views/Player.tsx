@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { themeById } from '../game/themes';
-import { turnFor } from '../game/turn';
-import type { Submission } from '../game/types';
+import { hasSomethingToDo, turnFor } from '../game/turn';
+import { choicesFor, myBallot } from '../game/ballot';
 import { CampfireScene } from '../scene/Campfire';
+import { castFrom, fireScaleFor } from '../scene/cast';
 import type { Campfire } from '../state/useCampfire';
-import type { GameSnapshot, VoteInput } from '../net';
-import { CardPanel, Countdown, HowToPlay, Leaderboard, ReactionBar, cardFor } from './shared';
+import type { VoteInput } from '../net';
+import { Countdown, HowToPlay, Leaderboard, ReactionBar, cardFor } from './shared';
 import { Glyph } from '../ui/Glyph';
 
 /**
@@ -59,10 +60,28 @@ export function Player({ campfire }: { campfire: Campfire }) {
   };
 
   const vote = (v: VoteInput) => void act(() => backend.castVote(round!.id, v));
+  const ballot = myBallot(snap.votes, myId);
   const spotlight = turn.task.kind === 'perform' || turn.task.kind === 'brace';
+  // How much room the controls need. A player with nothing to do gets the
+  // fire, not a panel.
+  const sheet = hasSomethingToDo(turn.task) ? 'full' : 'peek';
 
   return (
-    <main className={`player ${spotlight ? 'player-lit' : ''}`}>
+    // The fire is the screen, not a thumbnail on it. Everything else floats.
+    <main className={`player ${spotlight ? 'player-lit' : ''}`} data-sheet={sheet}>
+      <div className="player-world">
+        <CampfireScene
+          characters={castFrom(snap)}
+          theme={theme}
+          fireScale={fireScaleFor(snap.game.phase)}
+          zoom={1.15}
+          showNames={false}
+          spotlightId={myId}
+          className="player-canvas"
+        />
+      </div>
+
+      <div className="player-hud">
       <header className="player-head">
         <div className="player-who">
           <span className="eyebrow">{snap.game.code}</span>
@@ -74,30 +93,31 @@ export function Player({ campfire }: { campfire: Campfire }) {
         </div>
       </header>
 
-      {problem && <p className="form-error">{problem}</p>}
+      {/* The question sits in the sky above the ring — the gap the seating
+          already keeps clear so nobody sits behind the flame. */}
+      {card && round && (
+        <div className="player-question">
+          <h2>{card.title}</h2>
+          <p>{card.prompt}</p>
+        </div>
+      )}
 
-      {/* The instruction is the loudest thing on the screen, above the card.
-          On a phone, held under a desk, mid-call, it is often the only thing
-          that gets read. */}
-      <section className="player-body" aria-live="polite">
+      {/* Deliberately empty: this is the window onto the fire. */}
+      <div className="player-gap">
+        <Countdown round={round} />
+      </div>
+
+      <section className="player-sheet" aria-live="polite">
+        {problem && <p className="form-error">{problem}</p>}
+
         <div className="task">
           <h2 className="task-head">{turn.headline}</h2>
+          {/* Repeated here because the sky copy is hidden once the sheet is
+              open, and the one thing that must never be off screen is the
+              question you are being asked. */}
+          {card && round && <p className="task-prompt">{card.prompt}</p>}
           {turn.detail && <p className="task-detail">{turn.detail}</p>}
-          <Countdown round={round} big />
         </div>
-
-        {snap.game.phase === 'lobby' && me && (
-          <CampfireScene
-            characters={[{ id: myId, name: me.name, look: me.look, state: 'idle' }]}
-            theme={theme}
-            zoom={1.8}
-            showFire={false}
-            showNames={false}
-            className="player-canvas"
-          />
-        )}
-
-        {card && round && <CardPanel card={card} theme={theme} />}
 
         {turn.task.kind === 'write' && (
           <div className="answer">
@@ -127,7 +147,7 @@ export function Player({ campfire }: { campfire: Campfire }) {
             {[1, 2, 3, 4, 5].map((n) => (
               <button
                 key={n}
-                className={`score-btn ${myScore(snap, myId) === n ? 'chosen' : ''}`}
+                className={`score-btn ${ballot.score === n ? 'chosen' : ''}`}
                 onClick={() => vote({ score: n })}
               >
                 {n}
@@ -147,7 +167,7 @@ export function Player({ campfire }: { campfire: Campfire }) {
               .map((id) => (
                 <button
                   key={id}
-                  className={`pick ${votedFor(snap, myId) === id ? 'chosen' : ''}`}
+                  className={`pick ${ballot.targetPlayerId === id ? 'chosen' : ''}`}
                   onClick={() => vote({ targetPlayerId: id })}
                 >
                   {snap.players.find((p) => p.id === id)?.name ?? 'Someone'}
@@ -158,17 +178,27 @@ export function Player({ campfire }: { campfire: Campfire }) {
 
         {turn.task.kind === 'pick' && (
           <div className="pick-list">
-            {theirs(snap, myId).map((s, i) => (
-              <button
-                key={s.id}
-                className={`pick pick-answer ${votedForSubmission(snap, myId) === s.id ? 'chosen' : ''}`}
-                onClick={() => vote({ submissionId: s.id })}
-              >
-                <span className="reveal-num">{i + 1}</span>
-                <span className="pick-text">{s.text}</span>
-              </button>
-            ))}
-            {theirs(snap, myId).length === 0 && (
+            {choicesFor(snap.submissions, myId).map((c) =>
+              c.mine ? (
+                // Shown, numbered, not votable. Dropping it would renumber
+                // everything below it and stop matching the shared screen.
+                <div key={c.submission.id} className="pick pick-answer pick-mine">
+                  <span className="reveal-num">{c.number}</span>
+                  <span className="pick-text">{c.submission.text}</span>
+                  <span className="pick-flag">yours</span>
+                </div>
+              ) : (
+                <button
+                  key={c.submission.id}
+                  className={`pick pick-answer ${ballot.submissionId === c.submission.id ? 'chosen' : ''}`}
+                  onClick={() => vote({ submissionId: c.submission.id })}
+                >
+                  <span className="reveal-num">{c.number}</span>
+                  <span className="pick-text">{c.submission.text}</span>
+                </button>
+              ),
+            )}
+            {snap.submissions.length === 0 && (
               <p className="muted">Nothing to vote on — nobody else answered.</p>
             )}
           </div>
@@ -176,14 +206,15 @@ export function Player({ campfire }: { campfire: Campfire }) {
 
         {turn.task.kind === 'guess' && (
           <ul className="guess-list">
-            {theirs(snap, myId).map((s, i) => (
-              <li key={s.id}>
-                <span className="reveal-num">{i + 1}</span>
-                <span className="pick-text">{s.text}</span>
+            {choicesFor(snap.submissions, myId).filter((c) => !c.mine).map((c) => (
+              <li key={c.submission.id}>
+                <span className="reveal-num">{c.number}</span>
+                <span className="pick-text">{c.submission.text}</span>
                 <select
-                  value={guessFor(snap, myId, s.id) ?? ''}
+                  value={ballot.guesses[c.submission.id] ?? ''}
                   onChange={(e) =>
-                    e.target.value && vote({ submissionId: s.id, guessPlayerId: e.target.value })
+                    e.target.value &&
+                    vote({ submissionId: c.submission.id, guessPlayerId: e.target.value })
                   }
                 >
                   <option value="" disabled>
@@ -217,7 +248,6 @@ export function Player({ campfire }: { campfire: Campfire }) {
             always there, so a spectating player is never fully mute. This
             hint is for the audience only — telling the person who is *up* to
             watch the shared screen is the last thing they need. */}
-        {turn.task.kind === 'idle' && <p className="idle-hint muted">Watch the shared screen.</p>}
       </section>
 
       <footer className="player-foot">
@@ -244,24 +274,8 @@ export function Player({ campfire }: { campfire: Campfire }) {
           <HowToPlay theme={theme} />
         </div>
       </footer>
+      </div>
     </main>
   );
 }
 
-/** Everyone else's answers, in a stable order, never including your own. */
-const theirs = (snap: GameSnapshot, myId: string): Submission[] =>
-  snap.submissions.filter((s) => s.playerId !== myId);
-
-const myVotes = (snap: GameSnapshot, myId: string) =>
-  snap.votes.filter((v) => v.voterId === myId);
-
-const myScore = (snap: GameSnapshot, myId: string) => myVotes(snap, myId)[0]?.score ?? null;
-
-const votedFor = (snap: GameSnapshot, myId: string) =>
-  myVotes(snap, myId)[0]?.targetPlayerId ?? null;
-
-const votedForSubmission = (snap: GameSnapshot, myId: string) =>
-  myVotes(snap, myId)[0]?.submissionId ?? null;
-
-const guessFor = (snap: GameSnapshot, myId: string, submissionId: string) =>
-  myVotes(snap, myId).find((v) => v.submissionId === submissionId)?.guessPlayerId ?? null;

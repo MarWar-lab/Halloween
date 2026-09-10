@@ -381,17 +381,64 @@ select { width: 100%; background: var(--night); color: var(--text);
 .copy { font-family: var(--body); letter-spacing: 0; }
 
 /* ── player ──────────────────────────────────────────────── */
-.player { min-height: 100vh; display: flex; flex-direction: column;
-  max-width: 560px; margin: 0 auto; padding: 16px 16px 24px; gap: 16px; }
+/* ── the phone: the fire is the screen ───────────────────── */
+/* The scene used to be a 200px thumbnail that only appeared in the lobby, so
+   from the warm-up onward a player's Halloween party was a form on a dark
+   background. Now the graveyard is the page and everything else floats. */
+.player { position: relative; min-height: 100dvh; }
+.player-world { position: fixed; inset: 0; overflow: hidden; z-index: 0; }
+/* Fixed, not absolute: an iOS keyboard must move the sheet, never the world.
+   The canvas is oversized and lifted so a landscape composition crops to a
+   portrait one — only `top` changes, never the height, because a size change
+   would fire the ResizeObserver and repaint every frame the keyboard animates. */
+.player-canvas { position: absolute; left: 0; width: 100%; height: 132%;
+  top: var(--scene-lift, -32%); transition: top .28s ease; }
+/* The canvas draws a landscape composition — ring at 72% of its height, fire
+   at 74% — so the lift is chosen to put the flame just above wherever the
+   sheet starts. Open the sheet and the scene slides up rather than hiding
+   behind it; the sky is what gets cropped, and the question is sitting there
+   anyway. */
+.player[data-sheet='full'] { --scene-lift: -60%; }
+/* One scrim on the world, so the panels above can stay nearly transparent and
+   the fire still reads at full brightness. The middle band is left clear —
+   that is where the fire and the characters live. */
+.player-world::after { content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(to bottom,
+    rgba(10,7,14,.9) 0%, rgba(10,7,14,.5) 26%, rgba(10,7,14,0) 42%,
+    rgba(10,7,14,0) 56%, rgba(10,7,14,.72) 74%, rgba(10,7,14,.96) 100%); }
+
+.player-hud { position: relative; z-index: 1; min-height: 100dvh;
+  display: grid; grid-template-rows: auto auto 1fr auto;
+  max-width: 560px; margin: 0 auto;
+  padding: max(14px, env(safe-area-inset-top)) 16px max(18px, env(safe-area-inset-bottom)); }
+
+/* The question, in the sky above the ring. */
+.player-question { text-align: center; padding: 10px 2px 4px; }
+.player-question h2 { font-size: clamp(21px, 6.4vw, 28px); font-weight: 900; margin: 0 0 4px;
+  text-shadow: 0 2px 12px rgba(0,0,0,.9); }
+.player-question p { margin: 0; font-size: 15px; line-height: 1.4; color: var(--text);
+  text-shadow: 0 2px 10px rgba(0,0,0,.9); max-width: 34ch; margin-inline: auto; }
+/* Hidden in the sky only because the sheet repeats it; never hidden outright. */
+.player[data-sheet='full'] .player-question p { display: none; }
+.task-prompt { margin: 0; font-size: 16px; line-height: 1.42; color: var(--text); }
+.player[data-sheet='peek'] .task-prompt { display: none; }
+
+/* Nothing lives here. It is the window onto the fire. */
+.player-gap { display: flex; align-items: flex-start; justify-content: center; padding-top: 6px; }
+.player-gap .clock { font-size: 22px; text-shadow: 0 2px 10px rgba(0,0,0,.9); }
+
+.player-sheet { display: flex; flex-direction: column; gap: 12px; align-self: end;
+  background: rgba(14,10,19,.82); backdrop-filter: blur(8px);
+  border: 1px solid var(--edge); border-radius: var(--r-md);
+  padding: 14px; margin-top: 12px; }
+@supports not (backdrop-filter: blur(2px)) { .player-sheet { background: rgba(14,10,19,.95); } }
 .player-head { display: flex; justify-content: space-between; align-items: center;
-  border-bottom: 1px solid var(--edge); padding-bottom: 12px; }
+  padding-bottom: 6px; text-shadow: 0 2px 8px rgba(0,0,0,.9); }
 .player-head strong { display: block; font-family: var(--display); font-size: 21px; }
 .player-score { font-family: var(--mono); font-size: 27px; font-weight: 700; text-align: right; line-height: 1; }
 .player-score span { display: block; font-size: 9px; letter-spacing: .18em;
   text-transform: uppercase; color: var(--muted); margin-top: 3px; }
-.player-body { flex: 1; display: flex; flex-direction: column; gap: 14px; }
 .player-wait { text-align: center; color: var(--muted); padding: 20px 0; }
-.player-canvas { display: block; width: 100%; height: 200px; margin-bottom: 12px; }
 .youre-up { font-family: var(--display); font-size: 24px; font-weight: 900;
   color: var(--ember); margin: 0; }
 .answer { display: flex; flex-direction: column; gap: 10px; }
@@ -405,8 +452,7 @@ select { width: 100%; background: var(--night); color: var(--text);
   border: 1px solid var(--edge); border-radius: var(--r-sm); padding: 10px 12px; }
 .vote-text { flex: 1; font-size: 14.5px; }
 .my-result h2 { font-size: 26px; }
-.player-foot { display: flex; flex-direction: column; gap: 12px;
-  border-top: 1px solid var(--edge); padding-top: 14px; }
+.player-foot { display: flex; flex-direction: column; gap: 10px; padding-top: 12px; }
 .player-tools { display: flex; gap: 8px; align-items: center; }
 .player-scores summary { font-family: var(--mono); font-size: 10px; letter-spacing: .2em;
   text-transform: uppercase; color: var(--muted); cursor: pointer; }
@@ -572,3 +618,19 @@ select { width: 100%; background: var(--night); color: var(--text);
   background: rgba(20,16,26,.82); border: 1px solid var(--edge);
   border-radius: var(--r-sm); padding: 9px 12px; }
 .host-hint strong { color: var(--text); }
+
+/* Your own answer: numbered like everyone else's so the room's "number three"
+   still means the same thing, but not something you can vote for. */
+.pick-mine { opacity: .72; cursor: default; }
+.pick-flag { margin-left: auto; font-family: var(--mono); font-size: 10px;
+  letter-spacing: .16em; text-transform: uppercase; color: var(--muted); }
+
+/* A short phone in landscape cannot hold a scene band and a usable composer at
+   once. Rather than pretend, the scene becomes a wash and the page scrolls. */
+@media (orientation: landscape) and (max-height: 520px) {
+  .player-world { opacity: .38; }
+  .player-world::after { background: rgba(10,7,14,.55); }
+  .player-hud { min-height: auto; display: block; }
+  .player-gap { display: none; }
+  .player-canvas { transition: none; }
+}

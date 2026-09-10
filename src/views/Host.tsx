@@ -9,6 +9,7 @@ import { castFrom, fireScaleFor } from '../scene/cast';
 import type { Backend, GameSnapshot } from '../net';
 import type { Campfire } from '../state/useCampfire';
 import { CardPanel, Countdown, HowToPlay, Leaderboard, cardFor, nameOf } from './shared';
+import { choicesFor, myBallot } from '../game/ballot';
 
 const PHASE_LABEL: Record<string, string> = {
   lobby: 'Lobby',
@@ -563,10 +564,13 @@ function PlayPanel({
             ? snapshot.submittedPlayerIds.includes(player.id)
             : snapshot.votedPlayerIds.includes(player.id);
         const isUp = round.turnPlayerId === player.id || round.opponentId === player.id;
-        // Their own answers are visible to the host's session; everyone
-        // else's are anonymous until scoring, which is what makes this
-        // panel safe to have on the shared machine.
-        const theirs = snapshot.submissions.filter((s) => s.playerId !== player.id);
+        // The host's session can see the answers it typed for its own proxies,
+        // and nobody else's — that masking is what makes this panel safe to
+        // have open on the shared machine. `mine` marks the ones this player
+        // must not vote for; they stay listed so the numbers still match the
+        // shared screen.
+        const choices = choicesFor(snapshot.submissions, player.id);
+        const ballot = myBallot(snapshot.votes, player.id);
 
         return (
           <div key={player.id} className="proxy-vote">
@@ -617,49 +621,63 @@ function PlayPanel({
                     </button>
                   ))}
               </div>
-            ) : theirs.length === 0 ? (
+            ) : choices.length === 0 ? (
               <span className="muted small">Reveal the answers first.</span>
             ) : round.mechanic === 'guesswho' ? (
-              <div className="score-row-btns">
-                {theirs.map((s, i) => (
-                  <label key={s.id} className="guess-row" title={s.text}>
-                    <span className="reveal-num">#{i + 1}</span>
-                    <select
-                      defaultValue=""
-                      onChange={(e) =>
-                        e.target.value &&
-                        void cast(player.id, {
-                          submissionId: s.id,
-                          guessPlayerId: e.target.value,
-                        })
-                      }
-                    >
-                      <option value="" disabled>
-                        Guess…
-                      </option>
-                      {snapshot.players
-                        .filter((p) => p.id !== player.id)
-                        .map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-                ))}
-              </div>
+              <ul className="guess-list">
+                {choices
+                  .filter((c) => !c.mine)
+                  .map((c) => (
+                    <li key={c.submission.id}>
+                      <span className="reveal-num">{c.number}</span>
+                      <span className="pick-text">{c.submission.text}</span>
+                      <select
+                        value={ballot.guesses[c.submission.id] ?? ''}
+                        onChange={(e) =>
+                          e.target.value &&
+                          void cast(player.id, {
+                            submissionId: c.submission.id,
+                            guessPlayerId: e.target.value,
+                          })
+                        }
+                      >
+                        <option value="" disabled>
+                          Who wrote it?
+                        </option>
+                        {snapshot.players
+                          .filter((p) => p.id !== player.id)
+                          .map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}
+                            </option>
+                          ))}
+                      </select>
+                    </li>
+                  ))}
+              </ul>
             ) : (
-              <div className="score-row-btns">
-                {theirs.map((s, i) => (
-                  <button
-                    key={s.id}
-                    className="btn btn-sm"
-                    title={s.text}
-                    onClick={() => void cast(player.id, { submissionId: s.id })}
-                  >
-                    #{i + 1}
-                  </button>
-                ))}
+              // Whole answers, not "#2" with the text hidden in a tooltip. A
+              // tooltip cannot be read aloud, does not exist on a touch
+              // screen, and is useless at the speed a host works.
+              <div className="pick-list">
+                {choices.map((c) =>
+                  c.mine ? (
+                    <div key={c.submission.id} className="pick pick-answer pick-mine">
+                      <span className="reveal-num">{c.number}</span>
+                      <span className="pick-text">{c.submission.text}</span>
+                      <span className="pick-flag">theirs</span>
+                    </div>
+                  ) : (
+                    <button
+                      key={c.submission.id}
+                      className={`pick pick-answer ${ballot.submissionId === c.submission.id ? 'chosen' : ''}`}
+                      onClick={() => void cast(player.id, { submissionId: c.submission.id })}
+                    >
+                      <span className="reveal-num">{c.number}</span>
+                      <span className="pick-text">{c.submission.text}</span>
+                    </button>
+                  ),
+                )}
               </div>
             )}
           </div>

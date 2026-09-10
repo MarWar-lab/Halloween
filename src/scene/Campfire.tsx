@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import type { CharacterLook } from '../game/types';
 import type { Theme } from '../game/themes';
-import { drawCharacter, drawNameplate, type CharState } from './character';
+import { drawCharacter, drawMark, drawNameplate, headTop, type CharState } from './character';
 import {
   drawBackdrop,
   drawFire,
@@ -16,6 +16,14 @@ export interface SceneCharacter {
   name: string;
   look: CharacterLook;
   state: CharState;
+  /**
+   * Has acted this round. Deliberately separate from `state`: a pose says what
+   * someone is doing, a mark says they are finished, and a player can be both
+   * at once. Never carries what they said.
+   */
+  mark?: 'sealed' | 'voted' | null;
+  /** The round is still waiting on them. Drawn dimmer. */
+  dim?: boolean;
   away?: boolean;
 }
 
@@ -33,6 +41,13 @@ export interface CampfireSceneProps {
   showFire?: boolean;
   /** Anonymous stage rituals: progress embers, vote candles, mood flares. */
   ritual?: RitualEffects | null;
+  /**
+   * Name and ring one character even when names are off.
+   *
+   * On a phone the ring is small and unlabelled, and the first thing anyone
+   * asks is "which one is me".
+   */
+  spotlightId?: string | null;
   className?: string;
 }
 
@@ -66,7 +81,8 @@ function seatPositions(count: number, w: number, h: number, hasFire: boolean): S
   // the group. Placed too high and the tallest hat is cropped by the top of
   // the canvas — which is how a witch loses her point.
   const cy = h * 0.72;
-  const rx = w * 0.34;
+  // Tighter on a phone, or the end seats stand half off the screen.
+  const rx = w * (w < 520 ? 0.29 : 0.34);
   const ry = h * 0.19;
 
   // One ring is comfortable up to nine; beyond that, split evenly into two.
@@ -123,13 +139,14 @@ export function CampfireScene({
   zoom = 1,
   showFire = true,
   ritual = null,
+  spotlightId = null,
   className,
 }: CampfireSceneProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Kept in a ref so the animation loop is started once and never restarted by
   // a re-render — restarting it on every state change would reset the fire.
-  const propsRef = useRef({ characters, theme, fireScale, showNames, zoom, showFire, ritual });
-  propsRef.current = { characters, theme, fireScale, showNames, zoom, showFire, ritual };
+  const propsRef = useRef({ characters, theme, fireScale, showNames, zoom, showFire, ritual, spotlightId });
+  propsRef.current = { characters, theme, fireScale, showNames, zoom, showFire, ritual, spotlightId };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -157,12 +174,17 @@ export function CampfireScene({
     const start = performance.now();
     let frame = 0;
 
-    const render = (now: number) => {
+    // Drawing and scheduling are kept apart on purpose. When `draw` also
+    // queued the next frame, every eager repaint — the first paint, and every
+    // resize — started its own animation loop, all of them writing to the same
+    // `frame` handle, so unmount cancelled exactly one of them and the rest ran
+    // forever.
+    const draw = (now: number) => {
       const t = (now - start) / 1000;
       const {
         characters: cast, theme: th, fireScale: fs,
         showNames: names, zoom: mag, showFire: fire,
-        ritual: sceneRitual,
+        ritual: sceneRitual, spotlightId: mine,
       } = propsRef.current;
 
       ctx.clearRect(0, 0, width, height);
@@ -193,6 +215,8 @@ export function CampfireScene({
         .sort((a, b) => a.seat.y - b.seat.y);
 
       for (const { c, seat, i } of order) {
+        // Whoever the round is still waiting on sits back in the dark.
+        ctx.globalAlpha = c.dim ? 0.62 : 1;
         drawCharacter(ctx, {
           x: seat.x,
           y: seat.y,
@@ -206,6 +230,7 @@ export function CampfireScene({
           away: c.away,
           reduceMotion,
         });
+        ctx.globalAlpha = 1;
       }
 
       if (fire) {
@@ -220,7 +245,29 @@ export function CampfireScene({
         drawRitualEffects(ctx, width, height, th, sceneRitual, t, reduceMotion);
       }
 
-      // Nameplates last, so nobody's label is hidden behind a neighbour.
+      // Marks and nameplates last, so nobody's is hidden behind a neighbour.
+      for (const { c, seat } of order) {
+        if (c.mark) {
+          drawMark(ctx, seat.x, seat.y, seat.scale * s, c.mark, th, headTop(th, c.look));
+        }
+      }
+
+      // A ring of ember under whoever is holding this device.
+      if (mine) {
+        const you = order.find((o) => o.c.id === mine);
+        if (you) {
+          const r = 22 * you.seat.scale * s;
+          ctx.beginPath();
+          ctx.ellipse(you.seat.x, you.seat.y + 2, r, r * 0.34, 0, 0, Math.PI * 2);
+          ctx.strokeStyle = `${th.palette.ember}88`;
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          if (!names) {
+            drawNameplate(ctx, you.seat.x, you.seat.y, you.seat.scale * s, you.c.name, th, true);
+          }
+        }
+      }
+
       if (names) {
         for (const { c, seat } of order) {
           drawNameplate(
@@ -235,24 +282,31 @@ export function CampfireScene({
         }
       }
 
-      frame = requestAnimationFrame(render);
     };
 
-    // Paint once, synchronously, before handing over to the animation loop.
+    const loop = (now: number) => {
+      draw(now);
+      frame = requestAnimationFrame(loop);
+    };
+
+    // Paint once, synchronously, before the loop exists.
     //
     // requestAnimationFrame does not fire in a background tab, and some
-    // machines park it in low-power modes too — so a scene that only ever
-    // draws from inside the loop can sit at nothing for as long as the tab is
-    // not being composited. The failure looks exactly like a broken canvas:
-    // correct size, no errors, no picture. One eager frame means the worst
-    // case is a still scene rather than a black hole.
-    render(performance.now());
+    // machines park it in low-power modes too, so a scene that only ever draws
+    // from inside the loop can sit at nothing for as long as the tab is not
+    // being composited. The failure looks exactly like a broken canvas:
+    // correct size, no errors, no picture.
+    draw(performance.now());
 
+    // ResizeObserver fires once immediately on observe(), which is what makes
+    // it safe to repaint from here — `draw` no longer schedules anything.
     const observer = new ResizeObserver(() => {
       resize();
-      render(performance.now());
+      draw(performance.now());
     });
     observer.observe(canvas);
+
+    frame = requestAnimationFrame(loop);
 
     return () => {
       cancelAnimationFrame(frame);

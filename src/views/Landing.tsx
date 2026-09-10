@@ -59,11 +59,12 @@ export function Landing({ campfire }: { campfire: Campfire }) {
     // Once, on mount.
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Re-seed the character from the name until the player touches a control.
-  const [touched, setTouched] = useState(false);
-  useEffect(() => {
-    if (!touched) setLook(lookFromSeed(name || 'campfire'));
-  }, [name, touched]);
+  // Seeded once, not re-seeded per keystroke.
+  //
+  // This used to rebuild the character on every letter of the name, so the
+  // first thing anyone saw was their costume flickering through eight
+  // different people as they typed. It read as broken because it looked
+  // broken. Pressing "Surprise me" is how you ask for a different one.
 
   const preview = useMemo(
     () => [{ id: 'me', name: name.trim() || 'You', look, state: 'idle' as const }],
@@ -156,26 +157,26 @@ export function Landing({ campfire }: { campfire: Campfire }) {
                     ))}
                   </select>
                 </label>
-                <label className="field">
-                  <span>Look</span>
-                  <select value={themeId} onChange={(e) => setThemeId(e.target.value)}>
-                    {themes.map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.name} — {t.blurb}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                {/* Only rendered if there is ever a choice to make. */}
+                {themes.length > 1 && (
+                  <label className="field">
+                    <span>Look</span>
+                    <select value={themeId} onChange={(e) => setThemeId(e.target.value)}>
+                      {themes.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name} — {t.blurb}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
               </>
             )}
 
             <CharacterPicker
               look={look}
               theme={theme}
-              onChange={(next) => {
-                setTouched(true);
-                setLook(next);
-              }}
+              onChange={setLook}
             />
 
             {campfire.error && <p className="form-error">{campfire.error}</p>}
@@ -235,6 +236,9 @@ export function Landing({ campfire }: { campfire: Campfire }) {
   );
 }
 
+/** Costume names come from the theme in lower case; buttons are not shouting. */
+const label = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
 function CharacterPicker({
   look,
   theme,
@@ -255,10 +259,16 @@ function CharacterPicker({
           Skin
         </button>
         <button className="btn btn-sm" onClick={() => cycle('topper', theme.toppers.length)}>
-          {theme.toppers[look.topper % theme.toppers.length]}
+          {label(theme.toppers[look.topper % theme.toppers.length])}
         </button>
         <button className="btn btn-sm" onClick={() => cycle('top', TOP_COLOURS.length)}>
           Colour
+        </button>
+        <button
+          className="btn btn-sm"
+          onClick={() => cycle('accessory', theme.accessories.length)}
+        >
+          {label(theme.accessories[look.accessory % theme.accessories.length])}
         </button>
         <button
           className="btn btn-sm"

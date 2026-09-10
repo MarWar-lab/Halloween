@@ -92,10 +92,23 @@ export const halloween: Theme = {
   // Full costumes, not hats: the renderer changes body shape for some of
   // these (a sheet ghost has no legs and hovers).
   toppers: ['witch', 'pumpkin', 'ghost', 'mummy', 'devil', 'skull', 'vampire', 'hood'],
-  accessories: ['none', 'candle', 'cauldron', 'lantern', 'raven'],
+  accessories: ['none', 'candle', 'lantern', 'raven', 'broom'],
 };
 
-export const themes: Theme[] = [halloween, campfire];
+/**
+ * What the app actually offers.
+ *
+ * One world, done properly. The forest skin shipped alongside the graveyard and
+ * the two were indistinguishable in the only place you could compare them — the
+ * setup preview hides the fire, and the fire is where they differ. Worse, its
+ * costume list named five hats the renderer had never heard of, so five of its
+ * eight options drew the same picture.
+ *
+ * `campfire` is kept exported and buildable so a second skin is a data change
+ * rather than an architecture change, but it is not offered until its costumes
+ * are real.
+ */
+export const themes: Theme[] = [halloween];
 
 export const themeById = (id: string): Theme =>
   themes.find((t) => t.id === id) ?? halloween;

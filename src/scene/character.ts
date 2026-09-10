@@ -148,9 +148,9 @@ export function lookFromSeed(seed: string): CharacterLook {
   const n = (shift: number, mod: number) => Math.abs((h >> shift) % mod);
   return {
     body: n(0, BODY_TONES.length),
-    topper: n(5, 8),
+    topper: n(5, 997),
     top: n(11, TOP_COLOURS.length),
-    accessory: n(17, 5),
+    accessory: n(17, 997),
   };
 }
 
@@ -224,7 +224,7 @@ export function drawCharacter(ctx: CanvasRenderingContext2D, o: DrawCharacterOpt
   const ghost = costume === 'ghost';
 
   if (ghost) {
-    drawGhostBody(ctx, cloth, cloakRot);
+    drawGhostBody(ctx, cloth, skin, cloakRot);
   } else {
     drawCloak(ctx, costume, cloth, cloakRot);
     drawLeg(ctx, -8, rLeg, cloth);
@@ -238,7 +238,7 @@ export function drawCharacter(ctx: CanvasRenderingContext2D, o: DrawCharacterOpt
       state === 'voting' ? 'paddle' : state === 'ready' ? 'sealed-note' : null,
     );
     drawTorso(ctx, costume, cloth);
-    drawArm(ctx, 15, rArm, cloth, skin, state === 'applauding' ? 'clap' : null);
+    drawArm(ctx, 15, rArm, cloth, skin, state === 'applauding' ? 'clap' : accessoryHeld(o));
   }
 
   // ── head ────────────────────────────────────────────────────────────────
@@ -290,9 +290,9 @@ function drawTorso(ctx: CanvasRenderingContext2D, costume: string, cloth: string
   ctx.fill();
   stroke(ctx, 1.6);
 
-  if (costume === 'skeleton') {
+  if (costume === 'skull') {
     // Ribs, painted on.
-    ctx.strokeStyle = '#E8E0CE';
+    ctx.strokeStyle = mix('#E8E0CE', cloth, 0.3);
     ctx.lineWidth = 2;
     for (let i = 0; i < 3; i += 1) {
       ctx.beginPath();
@@ -318,13 +318,23 @@ function drawTorso(ctx: CanvasRenderingContext2D, costume: string, cloth: string
   }
 }
 
+/**
+ * What a hand is holding.
+ *
+ * The first three are game state — voting, having answered, applauding — and
+ * always win. The rest are the player's chosen accessory, which is decoration
+ * and gives way, because the room reading the round matters more than someone
+ * keeping hold of their raven.
+ */
+type Held = 'paddle' | 'sealed-note' | 'clap' | 'candle' | 'lantern' | 'raven' | 'broom' | null;
+
 function drawArm(
   ctx: CanvasRenderingContext2D,
   shoulderX: number,
   rotation: number,
   cloth: string,
   skin: string,
-  held: 'paddle' | 'sealed-note' | 'clap' | null,
+  held: Held,
 ) {
   ctx.save();
   ctx.translate(shoulderX, -82);
@@ -373,6 +383,75 @@ function drawArm(
     ctx.moveTo(-4, 44);
     ctx.lineTo(4, 44);
     ctx.stroke();
+  }
+
+  if (held === 'candle' || held === 'lantern') {
+    const glow = ctx.createRadialGradient(0, 40, 1, 0, 40, held === 'lantern' ? 26 : 18);
+    glow.addColorStop(0, 'rgba(240,168,60,0.5)');
+    glow.addColorStop(1, 'transparent');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(0, 40, held === 'lantern' ? 26 : 18, 0, Math.PI * 2);
+    ctx.fill();
+
+    if (held === 'candle') {
+      ctx.beginPath();
+      ctx.roundRect(-2.5, 36, 5, 13, 1);
+      ctx.fillStyle = '#EFE6D6';
+      ctx.fill();
+      stroke(ctx, 1.4);
+      ctx.beginPath();
+      ctx.ellipse(0, 32, 3, 5.5, 0, 0, Math.PI * 2);
+      ctx.fillStyle = '#FFD98A';
+      ctx.fill();
+    } else {
+      ctx.beginPath();
+      ctx.roundRect(-7, 36, 14, 16, 2);
+      ctx.fillStyle = '#3A2E1E';
+      ctx.fill();
+      stroke(ctx, 1.6);
+      ctx.beginPath();
+      ctx.rect(-4, 39, 8, 10);
+      ctx.fillStyle = '#FFD98A';
+      ctx.fill();
+    }
+  }
+
+  if (held === 'raven') {
+    ctx.beginPath();
+    ctx.ellipse(2, 30, 9, 6, rad(-12), 0, Math.PI * 2);
+    ctx.fillStyle = '#15121A';
+    ctx.fill();
+    stroke(ctx, 1.4);
+    ctx.beginPath();
+    ctx.arc(10, 25, 4, 0, Math.PI * 2);
+    ctx.fillStyle = '#15121A';
+    ctx.fill();
+    stroke(ctx, 1.2);
+    ctx.beginPath();
+    ctx.moveTo(13, 25);
+    ctx.lineTo(19, 27);
+    ctx.lineTo(13, 28);
+    ctx.closePath();
+    ctx.fillStyle = '#C9863C';
+    ctx.fill();
+  }
+
+  if (held === 'broom') {
+    ctx.beginPath();
+    ctx.roundRect(-1.8, -8, 3.6, 62, 1.8);
+    ctx.fillStyle = '#6B4A2A';
+    ctx.fill();
+    stroke(ctx, 1.4);
+    ctx.beginPath();
+    ctx.moveTo(-8, 52);
+    ctx.lineTo(8, 52);
+    ctx.lineTo(5, 66);
+    ctx.lineTo(-5, 66);
+    ctx.closePath();
+    ctx.fillStyle = '#B08543';
+    ctx.fill();
+    stroke(ctx, 1.4);
   }
 
   if (held === 'clap') {
@@ -432,7 +511,7 @@ function drawCloak(
   ctx.lineTo(22, 54);
   ctx.quadraticCurveTo(30, 28, 14, 0);
   ctx.closePath();
-  ctx.fillStyle = costume === 'vampire' ? '#2A0E18' : shade(cloth, -0.6);
+  ctx.fillStyle = shade(cloth, costume === 'vampire' ? -0.68 : -0.6);
   ctx.fill();
   stroke(ctx, 2.2);
 
@@ -450,7 +529,21 @@ function drawCloak(
 }
 
 /** A sheet ghost has no legs — it hovers, and the hem ripples. */
-function drawGhostBody(ctx: CanvasRenderingContext2D, cloth: string, rotation: number) {
+/**
+ * Every costume must show `look.top` on a large shape and `look.body` somewhere
+ * the eye lands.
+ *
+ * Half of them used to hardcode their colours, so a quarter of players opened
+ * the customiser, pressed Skin or Colour, and watched nothing happen. A costume
+ * you cannot colour is not a costume — it is a skin the player is not allowed
+ * to own.
+ */
+function drawGhostBody(
+  ctx: CanvasRenderingContext2D,
+  cloth: string,
+  skin: string,
+  rotation: number,
+) {
   ctx.save();
   ctx.rotate(rad(rotation * 0.4));
 
@@ -464,7 +557,7 @@ function drawGhostBody(ctx: CanvasRenderingContext2D, cloth: string, rotation: n
   ctx.quadraticCurveTo(-5, 2, -11, -6);
   ctx.quadraticCurveTo(-16, 2, -22, -6);
   ctx.closePath();
-  ctx.fillStyle = '#DCD6C8';
+  ctx.fillStyle = mix('#DCD6C8', cloth, 0.24);
   ctx.fill();
   stroke(ctx);
 
@@ -474,6 +567,17 @@ function drawGhostBody(ctx: CanvasRenderingContext2D, cloth: string, rotation: n
   ctx.fillStyle = shade(cloth, 0.2);
   ctx.fill();
   ctx.globalAlpha /= 0.5;
+
+  // Hands. Without them a ghost cannot hold a sealed note or raise a voting
+  // paddle, so the two postures the room reads to know who has acted were
+  // invisible on roughly one player in eight.
+  for (const side of [-1, 1]) {
+    ctx.beginPath();
+    ctx.arc(side * 21, -34, 5.5, 0, Math.PI * 2);
+    ctx.fillStyle = skin;
+    ctx.fill();
+    stroke(ctx);
+  }
 
   ctx.restore();
 }
@@ -528,7 +632,7 @@ function drawHead(
   }
 
   if (costume === 'pumpkin') {
-    drawPumpkinHead(ctx, cy, state, t, phase, reduceMotion);
+    drawPumpkinHead(ctx, cy, cloth, state, t, phase, reduceMotion);
     return;
   }
 
@@ -555,7 +659,7 @@ function drawHead(
   // Face
   ctx.beginPath();
   ctx.ellipse(0, cy, 17, 16.5, 0, 0, Math.PI * 2);
-  ctx.fillStyle = costume === 'skull' ? '#E8E0CE' : skin;
+  ctx.fillStyle = costume === 'skull' ? mix('#E8E0CE', skin, 0.3) : skin;
   ctx.fill();
   stroke(ctx);
 
@@ -765,6 +869,7 @@ function drawSkullFace(ctx: CanvasRenderingContext2D, cy: number, state: CharSta
 function drawPumpkinHead(
   ctx: CanvasRenderingContext2D,
   cy: number,
+  cloth: string,
   state: CharState,
   t: number,
   phase: number,
@@ -772,7 +877,7 @@ function drawPumpkinHead(
 ) {
   ctx.beginPath();
   ctx.ellipse(0, cy, 20, 18, 0, 0, Math.PI * 2);
-  ctx.fillStyle = '#C4642A';
+  ctx.fillStyle = mix('#C4642A', cloth, 0.34);
   ctx.fill();
   stroke(ctx);
 
@@ -845,7 +950,7 @@ function drawHeadgear(
       ctx.quadraticCurveTo(-6, cy - 40, 7, cy - 52);
       ctx.quadraticCurveTo(9, cy - 32, 13, cy - 16);
       ctx.closePath();
-      ctx.fillStyle = '#2E1F42';
+      ctx.fillStyle = shade(cloth, -0.5);
       ctx.fill();
       stroke(ctx);
       ctx.beginPath();
@@ -873,7 +978,7 @@ function drawHeadgear(
     }
 
     case 'mummy': {
-      ctx.strokeStyle = '#E8E0CE';
+      ctx.strokeStyle = mix('#E8E0CE', cloth, 0.2);
       ctx.lineWidth = 5;
       for (let i = 0; i < 4; i += 1) {
         ctx.beginPath();
@@ -925,6 +1030,96 @@ function drawHeadgear(
 
 // ── nameplate ─────────────────────────────────────────────────────────────
 
+/** The accessory the player chose, as something a hand can hold. */
+function accessoryHeld(o: DrawCharacterOptions): Held {
+  const list = o.theme.accessories;
+  const name = list[o.look.accessory % list.length];
+  return name === 'candle' || name === 'lantern' || name === 'raven' || name === 'broom'
+    ? name
+    : null;
+}
+
+/**
+ * How far above the feet the tallest part of a costume reaches, unscaled.
+ *
+ * A witch's cone and a devil's horns sit far above a plain head, so anything
+ * drawn "above the character" needs to ask rather than assume — otherwise the
+ * badge lands on the hat of the tall costumes and floats away from the short
+ * ones.
+ */
+const COSTUME_TOP: Record<string, number> = {
+  witch: 158,
+  devil: 140,
+  pumpkin: 133,
+  mummy: 128,
+  ghost: 124,
+};
+
+export function headTop(theme: Theme, look: CharacterLook): number {
+  const costume = theme.toppers[look.topper % theme.toppers.length];
+  return COSTUME_TOP[costume] ?? 122;
+}
+
+/**
+ * "I'm done" — a sealed note or a lit candle, floating above the head.
+ *
+ * The posture already says this, but a posture is a few pixels of arm angle
+ * and this has to read across a ring of nine at the far end of a screen-share
+ * that has been re-encoded twice.
+ */
+export function drawMark(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  scale: number,
+  mark: 'sealed' | 'voted',
+  theme: Theme,
+  top: number,
+) {
+  const cy = y - (top + 22) * scale;
+  const s = Math.max(0.7, scale);
+
+  ctx.save();
+  ctx.translate(x, cy);
+  ctx.scale(s, s);
+
+  // A warm halo so it separates from the trees behind it.
+  const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, 16);
+  glow.addColorStop(0, `${theme.palette.ember}66`);
+  glow.addColorStop(1, `${theme.palette.ember}00`);
+  ctx.fillStyle = glow;
+  ctx.fillRect(-16, -16, 32, 32);
+
+  if (mark === 'sealed') {
+    ctx.beginPath();
+    ctx.roundRect(-7, -6, 14, 12, 1.5);
+    ctx.fillStyle = '#EFE0BF';
+    ctx.fill();
+    ctx.strokeStyle = '#8B5A2B';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+    // A wax blob, because a sealed answer is the whole point.
+    ctx.beginPath();
+    ctx.arc(0, 0, 3, 0, Math.PI * 2);
+    ctx.fillStyle = theme.palette.alert;
+    ctx.fill();
+  } else {
+    ctx.beginPath();
+    ctx.roundRect(-2.5, -3, 5, 11, 1);
+    ctx.fillStyle = '#F3E0BD';
+    ctx.fill();
+    ctx.strokeStyle = '#8B5A2B';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.ellipse(0, -7, 3, 5, 0, 0, Math.PI * 2);
+    ctx.fillStyle = theme.palette.ember;
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
 export function drawNameplate(
   ctx: CanvasRenderingContext2D,
   x: number,
@@ -958,12 +1153,26 @@ export function drawNameplate(
 
 // ── helpers ───────────────────────────────────────────────────────────────
 
-/** Lighten (positive) or darken (negative) a hex colour. */
-function shade(hex: string, amount: number): string {
+const hex2 = (v: number) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, '0');
+const rgbOf = (hex: string) => {
   const n = parseInt(hex.slice(1), 16);
-  const clamp = (v: number) => Math.max(0, Math.min(255, Math.round(v)));
-  const r = clamp(((n >> 16) & 255) * (1 + amount));
-  const g = clamp(((n >> 8) & 255) * (1 + amount));
-  const b = clamp((n & 255) * (1 + amount));
-  return `rgb(${r},${g},${b})`;
+  return [(n >> 16) & 255, (n >> 8) & 255, n & 255] as const;
+};
+
+/**
+ * Lighten (positive) or darken (negative) a hex colour.
+ *
+ * Returns hex, not `rgb(...)`, so callers can append an alpha pair the way the
+ * scene code already does elsewhere.
+ */
+function shade(hex: string, amount: number): string {
+  const [r, g, b] = rgbOf(hex);
+  return `#${hex2(r * (1 + amount))}${hex2(g * (1 + amount))}${hex2(b * (1 + amount))}`;
+}
+
+/** Blend `a` toward `b`; `k` is how much of `b`. Hex in, hex out. */
+function mix(a: string, b: string, k: number): string {
+  const [ar, ag, ab] = rgbOf(a);
+  const [br, bg, bb] = rgbOf(b);
+  return `#${hex2(ar + (br - ar) * k)}${hex2(ag + (bg - ag) * k)}${hex2(ab + (bb - ab) * k)}`;
 }

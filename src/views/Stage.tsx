@@ -4,6 +4,7 @@ import type { AtmosphereCue, RitualEffects } from '../scene/fire';
 import { themeById } from '../game/themes';
 import type { GameSnapshot } from '../net';
 import { castFrom, fireScaleFor } from '../scene/cast';
+import { choicesFor } from '../game/ballot';
 import type { Campfire } from '../state/useCampfire';
 import { CardPanel, Countdown, Leaderboard, cardFor, nameOf } from './shared';
 import { Glyph } from '../ui/Glyph';
@@ -196,7 +197,7 @@ function AnswerRows({ snapshot }: { snapshot: GameSnapshot }) {
 
   return (
     <ul className="reveal-list">
-      {snapshot.submissions.map((s, i) => {
+      {choicesFor(snapshot.submissions, null).map(({ submission: s, number }) => {
         const scored = round.phase === 'scored';
         const votes = votesBySubmission.get(s.id) ?? 0;
         const candleLit = scored ? Math.min(5, votes) : progressCandles;
@@ -204,7 +205,7 @@ function AnswerRows({ snapshot }: { snapshot: GameSnapshot }) {
 
         return (
           <li key={s.id} className={isWinner ? 'answer-winner' : undefined}>
-            <span className="reveal-num">{i + 1}</span>
+            <span className="reveal-num">{number}</span>
             <span className="answer-body">
               <span className="pick-text">{s.text}</span>
               <CandleRow lit={candleLit} flare={isWinner} />
