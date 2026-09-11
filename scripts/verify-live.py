@@ -238,6 +238,84 @@ check("the Pass is recorded", bool(after and after["pass_spent"]))
 check("the Pass actually closes the card", closed and closed["phase"] == "scored",
       f"phase {closed['phase'] if closed else '?'}")
 
+
+# ── The Last Screen Standing ────────────────────────────────────────────────
+#
+# A separate game on separate tables, and one question decides whether it
+# works at all: can a player learn a percentage that is not theirs? These are
+# the only assertions that prove the answer on the real project — PGlite
+# proves the SQL is correct, this proves the live database is in that state.
+
+print("\n=== The Last Screen Standing: the seal, live ===")
+
+probe = call("POST", "/rest/v1/rpc/survival_resolve_code", tok_a, {"p_code": "ZZZZ"})
+if isinstance(probe, dict) and probe.get("__error__") in (404, 400):
+    print("  FAIL  the survival migration has not been applied")
+    print("\n  Run supabase/migrations/20260912090000_survival.sql, then run this again.")
+    raise SystemExit(1)
+check("the survival migration is applied", True)
+
+# Two gates, both shut: no grant and no policy. Either alone would do; the
+# table that must not leak gets both.
+opts = call("GET", "/rest/v1/survival_options?select=survival_pct", tok_b)
+check("a player cannot read the sealed options",
+      (isinstance(opts, dict) and bool(opts.get("__error__"))) or opts == [],
+      f"got {json.dumps(opts)[:80]}")
+
+worst = call("POST", "/rest/v1/rpc/survival_worst_option", tok_b, {"p_idx": 0})
+check("a player cannot ask which move is worst",
+      isinstance(worst, dict) and bool(worst.get("__error__")),
+      f"got {json.dumps(worst)[:80]}")
+
+sgame = one(call("POST", "/rest/v1/rpc/survival_create", tok_a, {"p_name": "Ana"}))
+check("survival_create opens a room", bool(sgame and sgame.get("code")),
+      f"code {sgame.get('code') if sgame else sgame}")
+if not sgame or not sgame.get("code"):
+    print("\nCannot continue.", json.dumps(sgame)[:400])
+    raise SystemExit(1)
+
+s_code, s_id = sgame["code"], sgame["id"]
+sb = one(call("POST", "/rest/v1/rpc/survival_join", tok_b, {"p_code": s_code, "p_name": "Ben"}))
+check("a second player takes a seat", bool(sb and sb.get("id")))
+
+call("POST", "/rest/v1/rpc/survival_advance", tok_a, {"p_game": s_id})  # briefing
+call("POST", "/rest/v1/rpc/survival_advance", tok_a, {"p_game": s_id})  # running
+
+# Ben chooses; Ana stays quiet and should be given the worst move.
+call("POST", "/rest/v1/rpc/survival_answer", tok_b, {"p_game": s_id, "p_option": 2})
+again = call("POST", "/rest/v1/rpc/survival_answer", tok_b, {"p_game": s_id, "p_option": 0})
+check("a tap is final", isinstance(again, dict) and bool(again.get("__error__")))
+
+hidden = call("GET", f"/rest/v1/survival_answers?game_id=eq.{s_id}&select=option_index", tok_a)
+check("a choice is sealed until the reveal", hidden == [], f"{len(hidden or [])} row(s)")
+
+call("POST", "/rest/v1/rpc/survival_reveal", tok_a, {"p_game": s_id})
+
+opened = call("GET",
+              f"/rest/v1/survival_answers?game_id=eq.{s_id}&select=player_id,option_index,auto_assigned",
+              tok_a)
+check("every choice opens at the reveal", len(opened or []) == 2, f"{len(opened or [])} of 2")
+check("and the silent player was given the worst move",
+      any(r["auto_assigned"] and r["option_index"] == 0 for r in (opened or [])))
+
+# THE ASSERTION THE WHOLE GAME RESTS ON.
+mine_b = call("GET", f"/rest/v1/survival_scores?game_id=eq.{s_id}&select=player_id,survival_pct", tok_b)
+check("you can read your own percentage",
+      len(mine_b or []) == 1 and mine_b[0]["survival_pct"] == 75,
+      f"{json.dumps(mine_b)[:80]}")
+check("and nobody else's", all(r["player_id"] == sb["id"] for r in (mine_b or [])))
+
+standings = call("POST", "/rest/v1/rpc/survival_standings", tok_b, {"p_game": s_id})
+check("the survival rates are refused before the tribunal",
+      isinstance(standings, dict) and bool(standings.get("__error__")),
+      f"got {json.dumps(standings)[:80]}")
+
+reveal = call("POST", "/rest/v1/rpc/survival_reveal_data", tok_b, {"p_game": s_id, "p_idx": 0})
+check("the outcomes are readable", len(reveal or []) == 5, f"{len(reveal or [])} of 5")
+check("and carry no percentage",
+      all(not any("pct" in k for k in r) for r in (reveal or [])),
+      ",".join((reveal or [{}])[0].keys()))
+
 print(f"\n{'=' * 60}\n  {len(passed)} passed, {len(failed)} failed")
 if failed:
     for f in failed:

@@ -324,6 +324,193 @@ const got = (id) => afterPoll[id] - beforePoll[id];
 check('the room’s choice is paid without a second vote', got(pa.id) >= 3, `Ana +${got(pa.id)}`);
 check('everyone who named somebody scored', [ph.id, pb.id].every((id) => got(id) > 0));
 
+// ── The Last Screen Standing ────────────────────────────────────────────────
+//
+// A separate game on separate tables, and the checks that matter are all one
+// question: can a player learn a percentage that is not theirs? Everything
+// else about this game is decoration if the answer is yes.
+
+console.log('\n=== The Last Screen Standing: the seal ===');
+
+const SHOST = '44444444-4444-4444-4444-444444444444';
+const CARA = '55555555-5555-5555-5555-555555555555';
+const DEV = '66666666-6666-6666-6666-666666666666';
+const LEE = '77777777-7777-7777-7777-777777777777';
+
+const refuses = async (sql, params = []) => {
+  try {
+    await db.query(sql, params);
+    return null;
+  } catch (err) {
+    return String(err.message).split('\n')[0];
+  }
+};
+
+await be(SHOST);
+const sgame = (await db.query(`select * from survival_create('Hana')`)).rows[0];
+check('survival_create allocates a room code', sgame?.code?.length === 4, sgame?.code);
+
+await be(CARA);
+const pCara = (await db.query(`select * from survival_join($1,'Cara')`, [sgame.code])).rows[0];
+await be(DEV);
+const pDev = (await db.query(`select * from survival_join($1,'Dev')`, [sgame.code])).rows[0];
+check('two more players joined', !!pCara?.id && !!pDev?.id);
+
+console.log('\n--- the sealed table has no way in ---');
+await be(CARA);
+check('a player cannot read survival_options',
+  !!(await refuses(`select * from survival_options`)));
+check('a player cannot ask which move is worst',
+  !!(await refuses(`select survival_worst_option(0)`)));
+check('a player cannot write an answer directly',
+  !!(await refuses(`select survival_assign($1,$2,0,1,false)`, [sgame.id, pCara.id])));
+
+console.log('\n--- one question, played ---');
+await be(SHOST);
+await db.query(`select survival_advance($1)`, [sgame.id]); // briefing
+await db.query(`select survival_advance($1)`, [sgame.id]); // running
+
+await be(CARA);
+// Option 2 on question 0 is 'block their number', the best move on the card.
+await db.query(`select survival_answer($1, 2)`, [sgame.id]);
+check('a tap is final', !!(await refuses(`select survival_answer($1, 0)`, [sgame.id])));
+
+await be(DEV);
+check('nobody else sees a choice before the reveal',
+  (await db.query(`select * from survival_answers where game_id=$1`, [sgame.id])).rows.length === 0);
+
+await be(SHOST);
+check('the host cannot skip the reveal',
+  !!(await refuses(`select survival_advance($1)`, [sgame.id])));
+await db.query(`select survival_reveal($1)`, [sgame.id]);
+
+await be(DEV);
+const opened = (await db.query(
+  `select player_id, option_index, auto_assigned from survival_answers
+    where game_id=$1 and question_idx=0`, [sgame.id])).rows;
+check('every choice opens at the reveal', opened.length === 3, `${opened.length} of 3`);
+check('the silent players were given the worst move',
+  opened.filter((r) => r.auto_assigned).every((r) => r.option_index === 0) &&
+  opened.filter((r) => r.auto_assigned).length === 2);
+
+console.log('\n--- but the percentages do not ---');
+await be(CARA);
+const myPct = (await db.query(`select * from survival_scores where game_id=$1`, [sgame.id])).rows;
+check('you see your own percentage', myPct.length === 1 && myPct[0].survival_pct === 75,
+  `${myPct.length} row(s)`);
+check('and only your own', myPct.every((r) => r.player_id === pCara.id));
+check('survival_standings refuses before the tribunal',
+  !!(await refuses(`select * from survival_standings($1)`, [sgame.id])));
+
+const reveal = (await db.query(`select * from survival_reveal_data($1, 0)`, [sgame.id])).rows;
+check('the reveal carries five outcomes', reveal.length === 5, `${reveal.length}`);
+check('and no percentage anywhere in it',
+  reveal.every((r) => !Object.keys(r).some((k) => k.includes('pct'))),
+  Object.keys(reveal[0] ?? {}).join(','));
+check('and counts who took each move',
+  reveal.find((r) => r.option_index === 2)?.takers === 1);
+
+console.log('\n--- arriving late ---');
+await be(LEE);
+const pLee = (await db.query(`select * from survival_join($1,'Lee')`, [sgame.code])).rows[0];
+const leeRows = (await db.query(
+  `select * from survival_answers where game_id=$1 and player_id=$2`, [sgame.id, pLee.id])).rows;
+check('a late joiner is backfilled for every revealed question', leeRows.length === 1,
+  `${leeRows.length}`);
+check('with the worst move, flagged as not their doing',
+  leeRows[0]?.option_index === 0 && leeRows[0]?.auto_assigned === true);
+
+console.log('\n--- the rest of the night, nobody answering ---');
+for (let q = 1; q <= 6; q += 1) {
+  await be(SHOST);
+  await db.query(`select survival_advance($1)`, [sgame.id]);
+  await db.query(`select survival_reveal($1)`, [sgame.id]);
+}
+await be(SHOST);
+await db.query(`select survival_advance($1)`, [sgame.id]); // → plea
+
+// The invariant the whole schema leans on: no player has a gap, whatever they
+// did or did not do, and whenever they turned up.
+const gaps = (await db.query(
+  `select p.name, count(a.*)::int as n
+     from survival_players p
+     left join survival_answers a on a.game_id = p.game_id and a.player_id = p.id
+    where p.game_id = $1 group by p.name order by p.name`, [sgame.id])).rows;
+check('every player has an answer for every question',
+  gaps.length === 4 && gaps.every((r) => r.n === 7),
+  gaps.map((r) => `${r.name}:${r.n}`).join(' '));
+
+console.log('\n--- the plea and the tribunal ---');
+await be(CARA);
+await db.query(`select survival_plea($1,'I have the ledger passcodes')`, [sgame.id]);
+await be(DEV);
+await db.query(`select survival_plea($1,'I am very light')`, [sgame.id]);
+check('a plea is sealed while people are still writing',
+  (await db.query(`select * from survival_pleas where game_id=$1`, [sgame.id])).rows.length === 1);
+
+// Who has acted is public at every phase; what they did is not. Without this
+// the host has no way to know the room has finished writing, and the shared
+// screen shows an empty roster all the way through.
+await be(DEV);
+const midPlea = (await db.query(`select * from survival_progress($1)`, [sgame.id])).rows[0];
+check('the host can see who has filed a plea', midPlea.pleaded.length === 2,
+  `${midPlea.pleaded.length} of 4`);
+check('without the pleas themselves travelling',
+  (await db.query(`select * from survival_pleas where game_id=$1`, [sgame.id])).rows.length === 1);
+
+await be(SHOST);
+await db.query(`select survival_advance($1)`, [sgame.id]); // → tribunal
+
+await be(DEV);
+check('the pleas open at the tribunal, with names on them',
+  (await db.query(`select * from survival_pleas where game_id=$1`, [sgame.id])).rows.length === 2);
+const standings = (await db.query(`select * from survival_standings($1)`, [sgame.id])).rows;
+check('and so does everybody else’s survival rate', standings.length === 4);
+check('Cara leads, having made the one good decision of the night',
+  standings[0]?.name === 'Cara', standings.map((s) => `${s.name} ${s.average}%`).join(', '));
+check('a vote cannot be cast for yourself',
+  !!(await refuses(`select survival_vote($1,$2)`, [sgame.id, pDev.id])));
+
+// A dead heat on votes, so the tie-break is what decides it.
+await db.query(`select survival_vote($1,$2)`, [sgame.id, pCara.id]);
+await be(CARA);
+await db.query(`select survival_vote($1,$2)`, [sgame.id, pDev.id]);
+await be(SHOST);
+await db.query(`select survival_vote($1,$2)`, [sgame.id, pCara.id]);
+await be(LEE);
+await db.query(`select survival_vote($1,$2)`, [sgame.id, pDev.id]);
+
+await be(LEE);
+const voting = (await db.query(`select * from survival_progress($1)`, [sgame.id])).rows[0];
+check('and who has voted, without the votes', voting.voted.length === 4,
+  `${voting.voted.length} of 4`);
+
+await be(CARA);
+check('no tally builds up in public while voting',
+  (await db.query(`select * from survival_votes where game_id=$1`, [sgame.id])).rows.length === 1);
+check('survival_winner refuses before the room has finished',
+  !!(await refuses(`select * from survival_winner($1)`, [sgame.id])));
+
+await be(SHOST);
+await db.query(`select survival_advance($1)`, [sgame.id]); // → result
+await be(LEE);
+const winner = (await db.query(`select * from survival_winner($1)`, [sgame.id])).rows;
+check('a tied vote is broken by the higher survival average',
+  winner.length === 1 && winner[0].name === 'Cara',
+  winner.map((w) => `${w.name} ${w.votes}v ${w.average}%`).join(', '));
+
+console.log('\n--- and nothing of this travels over realtime ---');
+await db.exec('reset role;');
+const published = (await db.query(
+  `select tablename from pg_publication_tables where pubname = 'supabase_realtime'`
+)).rows.map((r) => r.tablename);
+check('the lobby is published', published.includes('survival_games') &&
+  published.includes('survival_players'));
+check('answers, scores, pleas and votes are not',
+  !['survival_answers', 'survival_scores', 'survival_pleas', 'survival_votes']
+    .some((t) => published.includes(t)),
+  published.filter((t) => t.startsWith('survival')).join(', '));
+
 console.log('\n=== re-applying over a database that already has a game in it ===');
 // This is the real situation on the hosted project: 0001 and 0002 were
 // applied by hand, so `supabase db push` finds an empty migration table and

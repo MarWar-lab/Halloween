@@ -142,6 +142,52 @@ Six mechanics, in `Mechanic`:
 some questions ("who is most likely to host an event") are answered by the
 count, and voting again on the winner makes no sense.
 
+## The other game: The Last Screen Standing
+
+`/survive` is a **second game in this repo**, not a second mode of this one. It
+shares the anonymous sign-in (`src/lib/supabase.ts`), the Supabase project, the
+deployment and `src/main.tsx`, and nothing else — its own tables, its own RLS,
+its own RPCs, its own stylesheet. Nothing under `src/game/`, `src/net/`,
+`src/scene/` or `src/views/` is touched by it, and nothing it does can regress
+Campfire.
+
+Eight scripted questions. Seven offer five moves, everyone taps one, the
+outcomes are read out with each person's name against what they chose, and the
+room argues. No voting until the last question, which is an open plea followed
+by one vote for a winner.
+
+**Its one load-bearing rule: your survival percentage is yours.** You see what
+your own move cost you; nobody else does until the tribunal. That is why it has
+its own tables rather than riding on `games`/`players`/`rounds` — those are
+published over Realtime, so any per-player figure on them is streamed to every
+client no matter what the interface draws.
+
+How the seal is built, in the order it matters:
+
+1. `survival_options` holds the percentages and the prose. RLS on, **no policy
+   and no grant** — two gates, both shut. Only `survival_reveal` reads it.
+2. The public fact and the private fact are in **different tables**
+   (`survival_answers`, `survival_scores`), because RLS opens a row and not a
+   column. One table holding both would need a masking function nobody may edit
+   wrongly.
+3. Only `survival_games` and `survival_players` are in the realtime
+   publication. Everything else is polled, as submissions and votes are here.
+4. `survival_standings` **raises** before the tribunal. That refusal is the
+   reveal.
+
+`src/survival/sealed.ts` mirrors those values for the local backend, and
+**`?net=local` cannot keep the seal** — it is one browser with no server, so
+every figure it scores with is in the bundle. Stated in the file, shown in the
+corner of the screen, and fine: that mode exists for playing the night through
+before it is deployed. `src/survival/seal.test.ts` fails the build if the mirror
+drifts from the migration, and asserts that nothing but the local backend
+imports it.
+
+Both games are **lazily imported** in `src/main.tsx`, and that is not about
+bundle size: CSS has no scope, `App.css` defines a generic `.setup`, and so does
+the survival screen. Loading one or the other makes the collision impossible
+rather than unlikely. It already bit once.
+
 ## Where things live
 
 | | |
@@ -161,7 +207,8 @@ count, and voting again on the winner makes no sense.
 | `src/scene/cast.ts` | the staging table — phase in, poses and badges out |
 | `src/scene/fire.ts` | flames, decor, the face-down deck on the ground |
 | `src/views/{Stage,Player,Host,Landing}.tsx` | the three screens plus the door |
-| `supabase/migrations/` | init, grants, anonymity, split, poll |
+| `supabase/migrations/` | init, grants, anonymity, split, poll, survival |
+| `src/survival/` | The Last Screen Standing — a separate game; see above |
 | `scripts/check-migrations.mjs` | PGlite: applies every migration, plays a round, re-applies |
 
 **GRANT and POLICY are separate gates in Postgres.** Enabling RLS without
