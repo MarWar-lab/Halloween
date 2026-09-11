@@ -122,6 +122,25 @@ describe('deck integrity', () => {
     }
   });
 
+  it('does not single one person out more often than it invites everyone in', () => {
+    // The deck drifted to 19 solo cards out of 37 — more than half the night
+    // spent putting one person on the spot, in a game whose whole premise is
+    // that the quiet third of the team can take part. Everyone-at-once
+    // mechanics must outnumber solo turns.
+    const solo = deck.cards.filter((c) => c.mechanic === 'solo').length;
+    const together = deck.cards.filter(
+      (c) => c.mechanic === 'allplay' || c.mechanic === 'guesswho',
+    ).length;
+    expect(together).toBeGreaterThan(solo);
+    expect(solo / deck.cards.length).toBeLessThan(0.34);
+  });
+
+  it('opens gently: the easiest heat is the biggest part of the deck', () => {
+    const byHeat = (h: number) => deck.cards.filter((c) => c.heat === h).length;
+    expect(byHeat(1)).toBeGreaterThan(byHeat(2));
+    expect(byHeat(2)).toBeGreaterThan(byHeat(3));
+  });
+
   it('offers both lanes at heat 1 so the opening choice is real', () => {
     const heat1 = deck.cards.filter((c) => c.heat === 1 && c.mechanic === 'solo');
     expect(heat1.some((c) => c.lane === 'say')).toBe(true);
