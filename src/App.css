@@ -656,3 +656,39 @@ select { width: 100%; background: var(--night); color: var(--text);
 .split-count { font-family: var(--mono); font-size: 26px; font-weight: 700;
   color: var(--ember); font-variant-numeric: tabular-nums; }
 .stage-split .side.chosen .split-count { color: #1a1206; }
+
+/* ── where the evening has got to ─────────────────────────── */
+/* On every screen, all the time. A party game that hides its own progress
+   feels like it is going on forever even when it is not. */
+.progress { display: flex; flex-direction: column; gap: 6px; }
+.progress-bar { height: 3px; border-radius: 2px; background: var(--edge); overflow: hidden; }
+.progress-bar span { display: block; height: 100%; background: var(--ember);
+  transition: width .5s ease; }
+.progress-line { display: flex; flex-wrap: wrap; gap: 6px 16px; align-items: baseline;
+  font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em;
+  text-transform: uppercase; color: var(--muted); }
+.progress-line em { font-style: normal; margin-left: 6px; color: var(--text); }
+.progress-where { color: var(--text); }
+.progress-me { margin-left: auto; color: var(--ember); }
+/* The one state worth colouring: a host who is running long needs to know. */
+.progress.state-behind .progress-time { color: var(--alert); }
+.progress.state-behind .progress-bar span { background: var(--alert); }
+
+.host > .progress { margin-bottom: 14px; }
+.player-hud > .progress { padding: 4px 0 2px; }
+.player-hud .progress-line { text-shadow: 0 2px 8px rgba(0,0,0,.9); }
+.stage-top .progress { flex: 1; max-width: 640px; margin: 0 24px; }
+.stage-top .progress-line { font-size: 12px; }
+
+/* The one button the host needs was measured 208px below the fold on a
+   900px-tall laptop: they had to scroll to find out what to do next. It now
+   sticks to the bottom of the viewport, so it is reachable at any height and
+   whatever the card's length. */
+.host-next { position: sticky; bottom: 0; z-index: 3;
+  background: linear-gradient(to bottom, transparent, var(--night) 28%);
+  padding-bottom: 10px; }
+
+/* And while a round is live the scene steps back — the host is working, not
+   admiring the graveyard. It is still moving, just smaller. */
+.host[data-busy='true'] .host-stage { height: min(30vh, 280px); }
+.host[data-busy='true'] .host-hint { display: none; }

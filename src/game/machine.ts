@@ -130,14 +130,3 @@ export function duelPairing(
   return [sorted[0].playerId, sorted[1].playerId];
 }
 
-/** Seconds of an evening each phase is budgeted, used by the host's run sheet. */
-export const PHASE_MINUTES: Record<GamePhase, number> = {
-  lobby: 10,
-  briefing: 2,
-  warmup: 8,
-  round1: 32,
-  intermission: 10,
-  round2: 36,
-  finale: 16,
-  awards: 6,
-};

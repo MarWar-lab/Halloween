@@ -3,6 +3,8 @@ import { formatClock, secondsUntil } from '../lib/clock';
 import { deckById } from '../game/decks';
 import type { Card, Player, Round } from '../game/types';
 import type { Theme } from '../game/themes';
+import { pacingFor } from '../game/pacing';
+import type { Game, Player as PlayerRow } from '../game/types';
 import { Glyph, type GlyphName } from '../ui/Glyph';
 
 /**
@@ -135,6 +137,80 @@ export function HowToPlay({ theme }: { theme: Theme }) {
     </details>
   );
 }
+
+const CHAPTER_LABEL: Record<string, string> = {
+  lobby: 'Arriving',
+  briefing: 'Briefing',
+  warmup: 'Warm-up',
+  round1: 'Round one',
+  intermission: 'Interval',
+  round2: 'Round two',
+  finale: 'Finale',
+  awards: 'Awards',
+};
+
+/**
+ * Where the evening has got to, on every screen, all the time.
+ *
+ * Players could previously see their own score and nothing else — not how far
+ * through the night they were, not how many cards were left, not where they
+ * stood against anyone. A party game that hides its own progress feels like it
+ * is going on forever even when it is not.
+ */
+export function Progress({
+  game,
+  players,
+  usedCardIds,
+  meId,
+}: {
+  game: Game;
+  players: PlayerRow[];
+  usedCardIds: string[];
+  meId?: string | null;
+}) {
+  const pace = pacingFor(game, usedCardIds);
+  const ranked = [...players].sort((a, b) => b.score - a.score);
+  const mine = meId ? ranked.findIndex((p) => p.id === meId) : -1;
+  const me = mine >= 0 ? ranked[mine] : null;
+
+  return (
+    <div className={`progress state-${pace.state}`}>
+      <div className="progress-bar" aria-hidden="true">
+        <span style={{ width: `${Math.round(pace.fraction * 100)}%` }} />
+      </div>
+      <div className="progress-line">
+        <span className="progress-where">
+          {CHAPTER_LABEL[game.phase] ?? game.phase}
+          <em>
+            {pace.chapter}/{pace.chapterCount}
+          </em>
+        </span>
+        <span className="progress-cards">
+          {pace.cardsPlayed} of ~{pace.cardsPlanned} cards
+        </span>
+        <span className="progress-time" title={`Planned: about ${pace.minutesTarget} minutes`}>
+          {pace.minutesElapsed}/{pace.minutesTarget} min
+          {pace.state === 'behind' && ' · running long'}
+        </span>
+        {me && (
+          <span className="progress-me">
+            {me.score} {me.score === 1 ? 'pt' : 'pts'}
+            <em>
+              {mine + 1}
+              {ordinal(mine + 1)} of {ranked.length}
+            </em>
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+const ordinal = (n: number) => {
+  const rem = n % 100;
+  if (rem >= 11 && rem <= 13) return 'th';
+  return ['th', 'st', 'nd', 'rd'][n % 10] ?? 'th';
+};
 
 export function Leaderboard({
   players,

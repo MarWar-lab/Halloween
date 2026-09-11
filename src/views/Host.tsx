@@ -8,7 +8,7 @@ import { CampfireScene } from '../scene/Campfire';
 import { castFrom, fireScaleFor } from '../scene/cast';
 import type { Backend, GameSnapshot } from '../net';
 import type { Campfire } from '../state/useCampfire';
-import { CardPanel, Countdown, HowToPlay, Leaderboard, cardFor, nameOf } from './shared';
+import { CardPanel, Countdown, HowToPlay, Leaderboard, Progress, cardFor, nameOf } from './shared';
 import { choicesFor, eligibleVoters, myBallot } from '../game/ballot';
 
 const PHASE_LABEL: Record<string, string> = {
@@ -194,7 +194,16 @@ export function Host({ campfire }: { campfire: Campfire }) {
     // with the game itself behind a text link, and the first thing a host saw
     // of their own Halloween party was a form. Everything that is not the
     // scene, the card, or the single next action now lives behind one button.
-    <main className="host">
+    // `data-busy` shrinks the scene while the host has a job to do, so the
+    // card and the button they need both fit above the fold.
+    <main className="host" data-busy={!roundOver}>
+      <Progress
+        game={snap.game}
+        players={snap.players}
+        usedCardIds={snap.usedCardIds}
+        meId={campfire.session?.playerId ?? null}
+      />
+
       <div className="host-stage">
         <CampfireScene
           characters={castFrom(snap)}

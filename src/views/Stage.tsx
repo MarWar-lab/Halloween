@@ -7,7 +7,7 @@ import { castFrom, fireScaleFor } from '../scene/cast';
 import { choicesFor } from '../game/ballot';
 import { splitTally } from '../game/scoring';
 import type { Campfire } from '../state/useCampfire';
-import { CardPanel, Countdown, Leaderboard, cardFor, nameOf } from './shared';
+import { CardPanel, Countdown, Leaderboard, Progress, cardFor, nameOf } from './shared';
 import { Glyph } from '../ui/Glyph';
 
 /**
@@ -55,6 +55,7 @@ export function Stage({ campfire }: { campfire: Campfire }) {
           <span className="eyebrow">Room code</span>
           <strong>{snap.game.code}</strong>
         </div>
+        <Progress game={snap.game} players={snap.players} usedCardIds={snap.usedCardIds} />
         {round && <Countdown round={round} big />}
       </header>
 

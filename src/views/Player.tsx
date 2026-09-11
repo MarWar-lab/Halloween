@@ -6,7 +6,7 @@ import { CampfireScene } from '../scene/Campfire';
 import { castFrom, fireScaleFor } from '../scene/cast';
 import type { Campfire } from '../state/useCampfire';
 import type { VoteInput } from '../net';
-import { Countdown, HowToPlay, Leaderboard, ReactionBar, cardFor } from './shared';
+import { Countdown, HowToPlay, Leaderboard, Progress, ReactionBar, cardFor } from './shared';
 import { Glyph } from '../ui/Glyph';
 
 /**
@@ -92,6 +92,13 @@ export function Player({ campfire }: { campfire: Campfire }) {
           <span>{theme.vocab.points}</span>
         </div>
       </header>
+
+      <Progress
+        game={snap.game}
+        players={snap.players}
+        usedCardIds={snap.usedCardIds}
+        meId={myId}
+      />
 
       {/* The question sits in the sky above the ring — the gap the seating
           already keeps clear so nobody sits behind the flame. */}
