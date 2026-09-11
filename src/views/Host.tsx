@@ -70,6 +70,52 @@ export function Host({ campfire }: { campfire: Campfire }) {
   const [toolsOpen, setToolsOpen] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
 
+  // ── the game moves itself on ─────────────────────────────────────────────
+  // The slowest thing in a round was never a player. It was the gap between
+  // the last person tapping and the host noticing they had. Once the room is
+  // done, the round advances on its own after a beat long enough to see the
+  // last answer land. The host can still press the button early; this only
+  // removes the waiting.
+  //
+  // It sits above the early return because every hook has to run on every
+  // render. Below it, the console rendered fewer hooks while the snapshot was
+  // loading than once it arrived, and React tore the whole view down to a
+  // white screen — which is exactly what shipped.
+  const auto = useRef<string | null>(null);
+  const liveRound = snap?.round ?? null;
+  useEffect(() => {
+    if (!snap || !backend || !liveRound || liveRound.results) return;
+
+    const done =
+      liveRound.phase === 'submitting'
+        ? snap.players.every((p) => snap.submittedPlayerIds.includes(p.id))
+        : liveRound.phase === 'voting'
+          ? eligibleVoters(liveRound, snap.players).every((p) =>
+              snap.votedPlayerIds.includes(p.id),
+            )
+          : false;
+    if (!done) return;
+
+    const key = `${liveRound.id}:${liveRound.phase}`;
+    if (auto.current === key) return;
+    auto.current = key;
+
+    const t = window.setTimeout(() => {
+      const next = nextRoundPhase(liveRound.mechanic, liveRound.phase);
+      void (next === 'scored'
+        ? backend.scoreRound(liveRound.id)
+        : backend.advanceRound(liveRound.id, next, null));
+    }, 1400);
+    return () => window.clearTimeout(t);
+  }, [
+    snap,
+    backend,
+    liveRound,
+    snap?.submittedPlayerIds.length,
+    snap?.votedPlayerIds.length,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps
+
+
   if (!snap || !backend) return <main className="host">Connecting…</main>;
 
   const theme = themeById(snap.game.themeId);
@@ -133,46 +179,6 @@ export function Host({ campfire }: { campfire: Campfire }) {
         next === 'performing' ? (card?.secs ?? null) : null,
       );
     });
-
-  // ── the game moves itself on ─────────────────────────────────────────────
-  // The slowest thing in a round was never a player. It was the gap between
-  // the last person tapping and the host noticing they had. Once the room is
-  // done, the round advances on its own after a beat long enough to see the
-  // last answer land. The host can still press the button early; this only
-  // removes the waiting.
-  const auto = useRef<string | null>(null);
-  useEffect(() => {
-    if (!round || round.results || !backend || !snap) return;
-    const everyone = snap.players.map((p) => p.id);
-    const done =
-      round.phase === 'submitting'
-        ? everyone.every((id) => snap.submittedPlayerIds.includes(id))
-        : round.phase === 'voting'
-          ? eligibleVoters(round, snap.players).every((p) =>
-              snap.votedPlayerIds.includes(p.id),
-            )
-          : false;
-    if (!done) return;
-
-    const key = `${round.id}:${round.phase}`;
-    if (auto.current === key) return;
-    auto.current = key;
-
-    const t = window.setTimeout(() => {
-      const next = nextRoundPhase(round.mechanic, round.phase);
-      void (next === 'scored'
-        ? backend.scoreRound(round.id)
-        : backend.advanceRound(round.id, next, null));
-    }, 1400);
-    return () => window.clearTimeout(t);
-  }, [
-    round?.id,
-    round?.phase,
-    round?.results,
-    snap?.submittedPlayerIds.length,
-    snap?.votedPlayerIds.length,
-    snap?.players.length,
-  ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const advanceChapter = async () => {
     const phase = nextGamePhase(snap.game.phase);
