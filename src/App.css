@@ -176,10 +176,10 @@ select { width: 100%; background: var(--night); color: var(--text);
 .clock.warn { color: var(--ember); }
 .clock.crit, .clock.done { color: var(--alert); }
 
-.tag { font-family: var(--mono); font-size: 10px; letter-spacing: .2em;
+.tag { font-family: var(--mono); font-size: 10px; letter-spacing: .24em;
   text-transform: uppercase; padding: 4px 9px; border-radius: 2px; }
-.tag-do { background: rgba(95,191,199,.16); color: var(--cool); }
-.tag-say { background: rgba(240,168,60,.16); color: var(--ember); }
+.tag-do { background: transparent; color: var(--cool); }
+.tag-say { background: transparent; color: rgba(196,150,70,.95); }
 .pips { display: inline-flex; align-items: center; gap: 5px; font-family: var(--mono);
   font-size: 10px; letter-spacing: .18em; text-transform: uppercase; color: var(--muted); }
 .pip { color: var(--edge); }
@@ -189,49 +189,97 @@ select { width: 100%; background: var(--night); color: var(--text);
 .tag .glyph { vertical-align: -0.2em; margin-right: 5px; }
 .clock .glyph { opacity: .5; margin-right: .18em; }
 
-/* The card is a card.
-   Arkham Horror's anatomy — type line, title, rules text, then flavour under a
-   rule — because that order is what makes a card readable at a glance, and
-   Inscryption's worn, candle-lit surface, because a flat rectangle reads as a
-   dialog box and a dialog box is not something you want to pick up. The grain
-   and the burn are gradients: this repo ships no image assets. */
-.card-panel { position: relative; padding: 20px 22px; border-radius: var(--r-md);
-  border: 1px solid var(--edge);
+/* ── the card ─────────────────────────────────────────────── */
+/* An object, not a panel. Deep ground, an inset gold frame, a wax seal
+   carrying the mechanic, cobwebs in the corners and the heat burning at the
+   foot. All of it gradients and inline SVG — this repo ships no images, so a
+   theme stays a palette swap. */
+.card-panel {
+  position: relative;
+  padding: 30px 26px 26px;
+  border-radius: 10px;
+  border: 1px solid rgba(196, 150, 70, .34);
   background:
-    radial-gradient(120% 90% at 50% -20%, rgba(240,168,60,.09), transparent 58%),
-    radial-gradient(80% 60% at 100% 115%, rgba(0,0,0,.4), transparent 60%),
-    var(--panel);
-  box-shadow: inset 0 0 0 1px rgba(240,232,214,.045), 0 14px 34px rgba(0,0,0,.34); }
-/* A hairline inset frame, the way a printed card has a border inside its edge. */
-.card-panel::before { content: ''; position: absolute; inset: 5px; border-radius: 3px;
-  border: 1px solid rgba(240,232,214,.09); pointer-events: none; }
-.card-panel[data-lane='do'] { border-color: rgba(95,191,199,.34); }
-.card-panel[data-lane='say'] { border-color: rgba(240,168,60,.28); }
+    radial-gradient(120% 80% at 50% -10%, rgba(240, 168, 60, .10), transparent 56%),
+    radial-gradient(90% 70% at 108% 112%, rgba(0, 0, 0, .55), transparent 62%),
+    linear-gradient(168deg, #241C2C 0%, #1B1522 52%, #16111D 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(240, 232, 214, .05),
+    inset 0 1px 0 rgba(240, 232, 214, .08),
+    0 18px 44px rgba(0, 0, 0, .48);
+}
+/* The inset rule every printed card has, a little way inside its edge. */
+.card-panel::before {
+  content: '';
+  position: absolute;
+  inset: 7px;
+  border-radius: 6px;
+  border: 1px solid rgba(196, 150, 70, .22);
+  pointer-events: none;
+}
+/* A breath of age across the face, so it is not a flat fill. */
+.card-panel::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: .5;
+  background:
+    radial-gradient(60% 40% at 18% 24%, rgba(240, 232, 214, .045), transparent 70%),
+    radial-gradient(50% 34% at 82% 74%, rgba(0, 0, 0, .3), transparent 70%);
+}
+.card-panel[data-lane='do'] { border-color: rgba(95, 191, 199, .38); }
+.card-panel[data-lane='do']::before { border-color: rgba(95, 191, 199, .2); }
 
-.card-corner { position: absolute; width: 34px; height: 34px; color: var(--text);
-  opacity: .09; pointer-events: none; }
-.card-corner-tl { top: 2px; left: 2px; }
-.card-corner-br { bottom: 2px; right: 2px; transform: rotate(180deg); }
-.card-big .card-corner { width: 54px; height: 54px; }
+/* The seal, breaking the frame at the top the way a wax stamp would. */
+.card-seal {
+  position: absolute;
+  top: -1px;
+  left: 50%;
+  transform: translate(-50%, -38%);
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  color: #1a1206;
+  background: radial-gradient(circle at 38% 32%, #F7C46A, var(--ember) 58%, #A9661C 100%);
+  box-shadow: 0 3px 12px rgba(0, 0, 0, .55), inset 0 -2px 4px rgba(0, 0, 0, .25);
+  z-index: 2;
+}
+.card-big .card-seal { width: 62px; height: 62px; }
 
-.card-meta { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
-  margin-bottom: 12px; position: relative; }
-.card-sub { font-family: var(--mono); font-size: 11px; color: var(--ember); }
-.card-title { font-size: 27px; font-weight: 900; margin-bottom: 10px; position: relative; }
-.card-say { position: relative; }
-.card-say { font-size: 17px; margin: 0 0 12px; max-width: 54ch; }
-/* Flavour text: a rule above it and italics, the long-settled convention for
+.card-corner { position: absolute; width: 40px; height: 40px; color: var(--text);
+  opacity: .085; pointer-events: none; }
+.card-corner-tl { top: 3px; left: 3px; }
+.card-corner-br { bottom: 3px; right: 3px; transform: rotate(180deg); }
+.card-big .card-corner { width: 64px; height: 64px; }
+
+.card-meta { position: relative; display: flex; align-items: center; justify-content: center;
+  gap: 12px; flex-wrap: wrap; margin: 6px 0 12px; }
+.card-title { position: relative; font-size: 27px; font-weight: 900; margin-bottom: 10px;
+  text-align: center; text-wrap: balance; }
+.card-say { position: relative; font-size: 17px; margin: 0 auto 14px; max-width: 46ch;
+  text-align: center; }
+/* Flavour: a rule above it and italics, the long-settled convention for
    "this part is not the rules". */
-.card-wins { font-size: 13.5px; color: var(--muted); margin: 0; padding-top: 11px;
-  border-top: 1px solid var(--edge); font-style: italic; max-width: 56ch; }
-.card-big { background: rgba(20,16,26,.88); backdrop-filter: blur(2px); }
-.card-big .card-title { font-size: clamp(30px, 4.4vw, 52px); }
+.card-wins { position: relative; font-size: 13px; color: var(--muted); margin: 0 auto;
+  padding-top: 12px; border-top: 1px solid rgba(196, 150, 70, .2); font-style: italic;
+  max-width: 48ch; text-align: center; }
+
+/* Heat burning at the foot of the card. */
+.card-panel .pips { position: relative; display: flex; justify-content: center; gap: 7px;
+  margin-top: 14px; }
+
+.card-big { padding: 34px 30px 26px; border-radius: 14px; }
+.card-big .card-title { font-size: clamp(26px, 3.4vw, 42px); }
+.card-big .card-say { font-size: clamp(16px, 1.7vw, 22px); max-width: 40ch; }
+.card-big .card-wins { font-size: clamp(13px, 1.2vw, 16px); }
 .stage-centre.with-answers .card-big .card-title { font-size: clamp(22px, 2.6vw, 34px); }
 .stage-centre.with-answers .card-big .card-say { font-size: clamp(15px, 1.5vw, 19px); }
 .stage-centre.with-answers .card-big .card-wins { display: none; }
 .stage-centre.with-answers .card-panel { flex: 0 1 30%; }
-.card-big .card-say { font-size: clamp(18px, 2.1vw, 26px); max-width: 40ch; }
-.card-big .card-wins { font-size: clamp(14px, 1.3vw, 17px); }
 
 .leaderboard { list-style: none; margin: 0; padding: 0; }
 .leaderboard li { display: grid; grid-template-columns: 20px 1fr auto auto; align-items: center;
@@ -275,7 +323,7 @@ select { width: 100%; background: var(--night); color: var(--text);
    take whatever it needs is what shrank the fire to a thumbnail the moment a
    round produced six answers — and the scene is the reason anyone is looking
    at this screen rather than a spreadsheet. */
-.stage { height: 100vh; display: grid; grid-template-rows: auto minmax(40vh, 1fr) auto;
+.stage { height: 100vh; display: grid; grid-template-rows: auto minmax(30vh, 1fr) auto;
   overflow: hidden; }
 .stage-wait { display: grid; place-items: center; font-size: 20px; color: var(--muted); }
 .stage-top { display: flex; justify-content: space-between; align-items: flex-start;
@@ -291,7 +339,7 @@ select { width: 100%; background: var(--night); color: var(--text);
   border-radius: var(--r-md); padding: 12px 15px; }
 .stage-code strong { display: block; font-family: var(--mono); font-size: clamp(30px, 4vw, 52px);
   letter-spacing: .18em; line-height: 1; }
-.stage-centre { padding: 0 26px 18px; max-height: 48vh; display: flex; gap: 18px; align-items: flex-end;
+.stage-centre { padding: 26px 26px 18px; max-height: 52vh; display: flex; gap: 18px; align-items: flex-end;
   max-height: 46vh; overflow: hidden; }
 .stage-centre > * { min-width: 0; }
 .stage-centre .card-panel { flex: 1 1 46%; max-width: 62ch; }
@@ -590,7 +638,7 @@ select { width: 100%; background: var(--night); color: var(--text);
 
 /* One column, centred. Answering used to sit in a rail on the far side of a
    wide screen, so doing one thing meant looking from edge to edge. */
-.host-play { display: flex; flex-direction: column; gap: 16px; margin-top: 16px; }
+.host-play { display: flex; flex-direction: column; gap: 16px; margin-top: 30px; }
 .host-play .card-big .card-title { font-size: clamp(26px, 3vw, 40px); }
 .host-play .card-big .card-say { font-size: clamp(17px, 1.7vw, 22px); max-width: 46ch; }
 

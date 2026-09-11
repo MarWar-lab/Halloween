@@ -877,3 +877,92 @@ function drawFog(
   }
   ctx.restore();
 }
+
+/**
+ * The deck, face down on the ground by the fire.
+ *
+ * There was no deck — "deal a card" swapped some text in a box, and a card
+ * game with no visible cards is missing the one prop everybody already knows
+ * how to read. The stack thins as the night goes on, so the room can see how
+ * much is left without being told.
+ */
+export function drawDeck(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  left: number,
+  theme: Theme,
+  t: number,
+  reduceMotion = false,
+) {
+  if (left <= 0) return;
+
+  const s = Math.max(0.6, Math.min(1.25, Math.min(w / 720, h / 440)));
+  const x = w * 0.135;
+  const y = h * 0.845;
+  // One drawn card per two real ones, so a full deck is a satisfying pile and
+  // a nearly spent one is visibly nearly spent.
+  const cards = Math.max(1, Math.min(9, Math.round(left / 2)));
+  const cw = 54 * s;
+  const ch = 76 * s;
+
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate((-7 * Math.PI) / 180);
+
+  // The pile's shadow on the ground.
+  ctx.beginPath();
+  ctx.ellipse(0, ch * 0.52, cw * 0.78, ch * 0.16, 0, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.42)';
+  ctx.fill();
+
+  for (let i = 0; i < cards; i += 1) {
+    const lift = i * 2.1 * s;
+    // The top card breathes very slightly, so the pile reads as alive.
+    const top = i === cards - 1;
+    const sway = top && !reduceMotion ? Math.sin(t * 0.8) * 0.9 * s : 0;
+
+    ctx.save();
+    ctx.translate(i * 0.8 * s, -lift + sway);
+
+    ctx.beginPath();
+    ctx.roundRect(-cw / 2, -ch / 2, cw, ch, 4 * s);
+    ctx.fillStyle = i % 2 === 0 ? '#1B1522' : '#201829';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(196,150,70,0.42)';
+    ctx.lineWidth = 1.1 * s;
+    ctx.stroke();
+
+    if (top) {
+      // A rosette on the back of the top card only — the rest are edges.
+      ctx.beginPath();
+      ctx.roundRect(-cw / 2 + 5 * s, -ch / 2 + 5 * s, cw - 10 * s, ch - 10 * s, 3 * s);
+      ctx.strokeStyle = 'rgba(196,150,70,0.26)';
+      ctx.lineWidth = 0.9 * s;
+      ctx.stroke();
+
+      const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, 13 * s);
+      glow.addColorStop(0, `${theme.palette.ember}55`);
+      glow.addColorStop(1, 'transparent');
+      ctx.fillStyle = glow;
+      ctx.fillRect(-14 * s, -14 * s, 28 * s, 28 * s);
+
+      ctx.beginPath();
+      ctx.arc(0, 0, 8 * s, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(196,150,70,0.8)';
+      ctx.lineWidth = 1.3 * s;
+      ctx.stroke();
+      for (let k = 0; k < 6; k += 1) {
+        const a = (k / 6) * Math.PI * 2;
+        ctx.beginPath();
+        ctx.moveTo(Math.cos(a) * 4 * s, Math.sin(a) * 4 * s);
+        ctx.lineTo(Math.cos(a) * 11 * s, Math.sin(a) * 11 * s);
+        ctx.stroke();
+      }
+    }
+
+    ctx.restore();
+  }
+
+  ctx.restore();
+}

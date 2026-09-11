@@ -209,6 +209,7 @@ export function Host({ campfire }: { campfire: Campfire }) {
           characters={castFrom(snap)}
           theme={theme}
           fireScale={fireScaleFor(snap.game.phase)}
+          deckLeft={deckById(snap.game.deckId).cards.length - snap.usedCardIds.length}
           className="host-canvas"
         />
         <div className="host-code">

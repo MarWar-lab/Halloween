@@ -5,6 +5,7 @@ import { themeById } from '../game/themes';
 import type { GameSnapshot } from '../net';
 import { castFrom, fireScaleFor } from '../scene/cast';
 import { choicesFor } from '../game/ballot';
+import { deckById } from '../game/decks';
 import { pollTally, splitTally } from '../game/scoring';
 import type { Campfire } from '../state/useCampfire';
 import { CardPanel, Countdown, Leaderboard, Progress, cardFor, nameOf } from './shared';
@@ -65,6 +66,7 @@ export function Stage({ campfire }: { campfire: Campfire }) {
           theme={theme}
           fireScale={fireScaleFor(snap.game.phase)}
           ritual={ritual}
+          deckLeft={deckById(snap.game.deckId).cards.length - snap.usedCardIds.length}
           className="stage-canvas"
         />
         <aside className="stage-scores">

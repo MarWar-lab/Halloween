@@ -16,12 +16,16 @@ export const MECHANIC_GLYPH: Record<string, GlyphName> = {
   guesswho: 'mask',
   solo: 'person',
   duel: 'swords',
+  split: 'ball',
+  poll: 'laurels',
 };
 
 const MECHANIC_WORD: Record<string, string> = {
   allplay: 'Everyone answers',
   guesswho: 'Guess who',
   duel: 'Duel',
+  split: 'One tap',
+  poll: 'Name one of us',
 };
 
 export function cardFor(deckId: string, cardId: string | null | undefined): Card | null {
@@ -258,9 +262,14 @@ export function CardPanel({
   const laneWord = card.lane === 'do' ? theme.vocab.laneDo : theme.vocab.laneSay;
   const typeLine = card.mechanic === 'solo' ? laneWord : MECHANIC_WORD[card.mechanic];
 
-  // Laid out like a real card: a type line across the top, the title, the
-  // rules text, then the flavour line under a rule. Card games settled on
-  // that order because it survives being read in a hurry.
+  // A card, not a panel.
+  //
+  // Type line across the top, title, rules text, flavour under a rule: the
+  // order card games settled on because it survives being read in a hurry.
+  // The rest is deliberately physical — an inset gold frame, a wax seal
+  // carrying the mechanic, cobwebs in the corners, heat burning at the foot.
+  // A flat rectangle reads as a dialog box, and nobody wants to pick up a
+  // dialog box.
   return (
     <div className={`card-panel ${big ? 'card-big' : ''}`} data-lane={card.lane}>
       <span className="card-corner card-corner-tl" aria-hidden="true">
@@ -270,22 +279,24 @@ export function CardPanel({
         <Glyph name="cobweb" size="100%" />
       </span>
 
+      <span className="card-seal" aria-hidden="true">
+        <Glyph name={MECHANIC_GLYPH[card.mechanic] ?? 'person'} size="58%" />
+      </span>
+
       <div className="card-meta">
-        <span className={`tag ${card.lane === 'do' ? 'tag-do' : 'tag-say'}`}>
-          <Glyph name={MECHANIC_GLYPH[card.mechanic] ?? 'person'} size={13} />
-          {typeLine}
-        </span>
-        <span className="pips" aria-label={`Heat ${card.heat} of 3`}>
-          {[1, 2, 3].map((h) => (
-            <Glyph key={h} name="flame" size={13} className={h <= card.heat ? 'pip on' : 'pip'} />
-          ))}
-        </span>
+        <span className={`tag ${card.lane === 'do' ? 'tag-do' : 'tag-say'}`}>{typeLine}</span>
         {subtitle && <span className="card-sub">{subtitle}</span>}
       </div>
 
       <h2 className="card-title">{card.title}</h2>
       <p className="card-say">{card.prompt}</p>
       <p className="card-wins">{card.wins}</p>
+
+      <span className="pips" aria-label={`Heat ${card.heat} of 3`}>
+        {[1, 2, 3].map((h) => (
+          <Glyph key={h} name="flame" size={15} className={h <= card.heat ? 'pip on' : 'pip'} />
+        ))}
+      </span>
     </div>
   );
 }

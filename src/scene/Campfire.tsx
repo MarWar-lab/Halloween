@@ -6,6 +6,7 @@ import {
   drawBackdrop,
   drawFire,
   drawFireGlow,
+  drawDeck,
   drawRitualEffects,
   drawSceneDecor,
   type RitualEffects,
@@ -48,6 +49,8 @@ export interface CampfireSceneProps {
   showFire?: boolean;
   /** Anonymous stage rituals: progress embers, vote candles, mood flares. */
   ritual?: RitualEffects | null;
+  /** Cards left undealt, drawn as a face-down pile by the fire. */
+  deckLeft?: number | null;
   /**
    * Name and ring one character even when names are off.
    *
@@ -146,14 +149,15 @@ export function CampfireScene({
   zoom = 1,
   showFire = true,
   ritual = null,
+  deckLeft = null,
   spotlightId = null,
   className,
 }: CampfireSceneProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   // Kept in a ref so the animation loop is started once and never restarted by
   // a re-render — restarting it on every state change would reset the fire.
-  const propsRef = useRef({ characters, theme, fireScale, showNames, zoom, showFire, ritual, spotlightId });
-  propsRef.current = { characters, theme, fireScale, showNames, zoom, showFire, ritual, spotlightId };
+  const propsRef = useRef({ characters, theme, fireScale, showNames, zoom, showFire, ritual, deckLeft, spotlightId });
+  propsRef.current = { characters, theme, fireScale, showNames, zoom, showFire, ritual, deckLeft, spotlightId };
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -191,7 +195,7 @@ export function CampfireScene({
       const {
         characters: cast, theme: th, fireScale: fs,
         showNames: names, zoom: mag, showFire: fire,
-        ritual: sceneRitual, spotlightId: mine,
+        ritual: sceneRitual, deckLeft: pile, spotlightId: mine,
       } = propsRef.current;
 
       ctx.clearRect(0, 0, width, height);
@@ -212,6 +216,7 @@ export function CampfireScene({
 
       if (fire) drawFireGlow(ctx, fireX, fireY, 300 * s * fs * fireBoost, th, t, reduceMotion);
       if (fire) drawSceneDecor(ctx, width, height, th, t, reduceMotion);
+      if (fire && pile != null) drawDeck(ctx, width, height, pile, th, t, reduceMotion);
 
       const seats = seatPositions(cast.length, width, height, fire);
 

@@ -13,10 +13,26 @@
 -- without this every split card fails at insert. Caught by running the
 -- migration against a real Postgres rather than by reading it.
 
-alter table public.rounds drop constraint if exists rounds_mechanic_check;
-alter table public.rounds
-  add constraint rounds_mechanic_check
-  check (mechanic in ('solo', 'allplay', 'guesswho', 'duel', 'split'));
+-- Widen, never narrow.
+--
+-- This used to drop the constraint and re-add it listing only the mechanics
+-- this migration knew about — so re-running it after a later migration had
+-- added another one narrowed the list again and was rejected by the rows that
+-- later migration had allowed. A migration that claims to be safe to re-run
+-- has to actually be.
+do $$
+begin
+  if not exists (
+    select 1 from pg_constraint
+     where conname = 'rounds_mechanic_check'
+       and pg_get_constraintdef(oid) like '%''split''%'
+  ) then
+    alter table public.rounds drop constraint if exists rounds_mechanic_check;
+    alter table public.rounds
+      add constraint rounds_mechanic_check
+      check (mechanic in ('solo', 'allplay', 'guesswho', 'duel', 'split'));
+  end if;
+end $$;
 
 -- ─── which of the two ───────────────────────────────────────────────────────
 -- Not reusing `score`. A side is not a rating, and a column that means two
