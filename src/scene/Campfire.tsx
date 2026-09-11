@@ -191,7 +191,9 @@ export function CampfireScene({
     // `frame` handle, so unmount cancelled exactly one of them and the rest ran
     // forever.
     const draw = (now: number) => {
-      const t = (now - start) / 1000;
+      // Never negative: the first frame's rAF timestamp can predate `start`,
+      // because rAF reports when the frame began and this effect ran inside it.
+      const t = Math.max(0, now - start) / 1000;
       const {
         characters: cast, theme: th, fireScale: fs,
         showNames: names, zoom: mag, showFire: fire,

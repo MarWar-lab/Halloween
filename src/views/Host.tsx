@@ -343,20 +343,19 @@ export function Host({ campfire }: { campfire: Campfire }) {
           <div className="panel">
             <h3>Courage dial</h3>
             <div className="seg" role="group" aria-label="Maximum heat">
-              {([1, 2, 3] as const).map((h) => (
+              {([1, 2] as const).map((h) => (
                 <button
                   key={h}
                   aria-pressed={snap.game.heatCap === h}
                   onClick={() => void run(() => backend.setPhase(snap.game.id, snap.game.phase, h))}
                 >
-                  {h}
+                  {h === 1 ? 'Gentle' : 'Bold'}
                 </button>
               ))}
             </div>
             <p className="muted small">
-              {snap.game.heatCap === 1 && 'Chat answers and camera-off cards. Nobody performs.'}
-              {snap.game.heatCap === 2 && 'Objects get fetched. Still seated, still no acting.'}
-              {snap.game.heatCap === 3 && 'Entrances and reenactments. Volunteers only.'}
+              {snap.game.heatCap === 1 && 'Typed answers, cameras off, nobody has to perform.'}
+              {snap.game.heatCap === 2 && 'People fetch things and act. Anyone can still Pass.'}
             </p>
           </div>
 

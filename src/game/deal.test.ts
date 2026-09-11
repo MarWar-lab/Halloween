@@ -6,12 +6,12 @@ import type { Mechanic } from './types';
 
 const deck = deckById('halloween');
 const players = ['p1', 'p2', 'p3', 'p4'];
-const base = { deck, heatCap: 3 as const, usedCardIds: [], playerIds: players, playedPlayerIds: [] };
+const base = { deck, heatCap: 2 as const, usedCardIds: [], playerIds: players, playedPlayerIds: [] };
 
 describe('setting up a round', () => {
   it('gives every mechanic that opens on a clock a deadline to open with', () => {
     for (const mechanic of ['solo', 'allplay', 'guesswho', 'duel'] as Mechanic[]) {
-      const card = eligible(deck, { heatCap: 3, usedIds: [], mechanic })[0];
+      const card = eligible(deck, { heatCap: 2, usedIds: [], mechanic })[0];
       const plan = planFor(card);
       const opensOnAClock = ['submitting', 'performing'].includes(roundFlow(mechanic)[0]);
       expect(Boolean(plan.secs), `${mechanic} starts at ${plan.phase}`).toBe(opensOnAClock);

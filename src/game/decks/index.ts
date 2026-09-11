@@ -47,7 +47,7 @@ export function draw(deck: Deck, f: DrawFilter, rand: () => number = Math.random
  * the multiplayer half must always be an enhancement, never a requirement.
  */
 export function deviceFreeCountByHeat(deck: Deck): Record<Heat, number> {
-  const counts: Record<Heat, number> = { 1: 0, 2: 0, 3: 0 };
+  const counts: Record<Heat, number> = { 1: 0, 2: 0 };
   for (const c of deck.cards) if (!c.needsDevice) counts[c.heat] += 1;
   return counts;
 }

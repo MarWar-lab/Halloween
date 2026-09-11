@@ -223,7 +223,7 @@ describe('a full game through the local backend', () => {
     it('starts its timer without the host having to advance a phase first', async () => {
       // A duel's flow begins at `performing`, so if the deal does not set a
       // deadline the two players are performing against nothing.
-      const roundId = await deal('duel', 3);
+      const roundId = await deal('duel', 2);
       const round = seenBy(backend, 'host', gameId).round!;
       expect(round.phase).toBe('performing');
       expect(round.deadlineAt, 'a duel is dealt with its clock already running').toBeTruthy();
@@ -231,7 +231,7 @@ describe('a full game through the local backend', () => {
     });
 
     it('pays three to the winner and one for turning up', async () => {
-      const roundId = await deal('duel', 3);
+      const roundId = await deal('duel', 2);
       tab('host');
       await backend.advanceRound(roundId, 'voting');
       for (const who of ['cleo', 'host'] as const) {

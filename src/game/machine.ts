@@ -35,11 +35,8 @@ export function heatCapFor(phase: GamePhase): Heat {
     case 'warmup':
     case 'round1':
       return 1;
-    case 'intermission':
-    case 'round2':
-      return 2;
     default:
-      return 3;
+      return 2;
   }
 }
 

@@ -186,15 +186,23 @@ export function drawCharacter(ctx: CanvasRenderingContext2D, o: DrawCharacterOpt
   // slideshow, and hold frame 0 when motion is reduced.
   let f = frames[0];
   let prev = frames[0];
-  if (!o.reduceMotion) {
-    const pos = ((o.t * 1000 + phase * 220) / ms) % frames.length;
+  if (!o.reduceMotion && frames.length > 1) {
+    // Wrap into range by hand. The clock can run backwards past zero for a
+    // frame — requestAnimationFrame hands back the timestamp of the frame it
+    // is already inside, which can predate the performance.now() taken when
+    // the scene mounted — and a bare `%` keeps the sign, so Math.floor of a
+    // small negative is -1 and frames[-1] is undefined. That crashed the whole
+    // canvas on the first character on the first frame.
+    const n = frames.length;
+    const raw = (o.t * 1000 + phase * 220) / ms;
+    const pos = ((raw % n) + n) % n;
     const i = Math.floor(pos);
     const k = pos - i;
     const a = frames[i];
-    const b = frames[(i + 1) % frames.length];
-    f = a.map((v, n) => lerp(v, b[n], k));
+    const b = frames[(i + 1) % n];
+    f = a.map((v, m) => lerp(v, b[m], k));
     // Hair and cloak trail the body by roughly one frame.
-    prev = frames[(i - 1 + frames.length) % frames.length];
+    prev = frames[(i - 1 + n) % n];
   }
 
   const [by, br, rArm, lArm, rLeg, lLeg, hx, hy] = f;

@@ -7,8 +7,12 @@
  * and a normal campfire in March.
  */
 
-/** How hot a card runs — the courage dial. This is the spine of the design. */
-export type Heat = 1 | 2 | 3;
+/**
+ * How hot a card runs — the courage dial. Two settings, not three: warm up,
+ * then commit. A third step made the difference between any two neighbouring
+ * levels too small to feel, and stretched the night past the time it has.
+ */
+export type Heat = 1 | 2;
 
 /**
  * What the card asks of a player.

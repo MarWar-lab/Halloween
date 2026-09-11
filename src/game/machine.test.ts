@@ -136,7 +136,7 @@ describe('deck integrity', () => {
   it('can run an entire game with no player devices at every heat', () => {
     // The multiplayer half must always be an enhancement, never a requirement.
     const counts = deviceFreeCountByHeat(deck);
-    for (const heat of [1, 2, 3] as Heat[]) {
+    for (const heat of [1, 2] as Heat[]) {
       expect(counts[heat]).toBeGreaterThanOrEqual(4);
     }
   });
@@ -157,7 +157,6 @@ describe('deck integrity', () => {
   it('opens gently: the easiest heat is the biggest part of the deck', () => {
     const byHeat = (h: number) => deck.cards.filter((c) => c.heat === h).length;
     expect(byHeat(1)).toBeGreaterThan(byHeat(2));
-    expect(byHeat(2)).toBeGreaterThan(byHeat(3));
   });
 
   it('offers both lanes at heat 1 so the opening choice is real', () => {
@@ -175,18 +174,18 @@ describe('deck integrity', () => {
 
   it('never repeats a used card, and reports exhaustion instead of recycling', () => {
     const used: string[] = [];
-    let card = draw(deck, { heatCap: 3, usedIds: used });
+    let card = draw(deck, { heatCap: 2, usedIds: used });
     while (card) {
       expect(used).not.toContain(card.id);
       used.push(card.id);
-      card = draw(deck, { heatCap: 3, usedIds: used });
+      card = draw(deck, { heatCap: 2, usedIds: used });
     }
     expect(used.length).toBe(deck.cards.length);
-    expect(draw(deck, { heatCap: 3, usedIds: used })).toBeNull();
+    expect(draw(deck, { heatCap: 2, usedIds: used })).toBeNull();
   });
 
   it('filters by mechanic', () => {
-    const only = eligible(deck, { heatCap: 3, usedIds: [], mechanic: 'duel' });
+    const only = eligible(deck, { heatCap: 2, usedIds: [], mechanic: 'duel' });
     expect(only.length).toBeGreaterThan(0);
     expect(only.every((c) => c.mechanic === 'duel')).toBe(true);
   });
