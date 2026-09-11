@@ -32,6 +32,9 @@ import {
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
+/** A well-formed id that is guaranteed to match nothing, for probing. */
+const MISSING_UUID = '00000000-0000-0000-0000-000000000000';
+
 const rowToGame = (r: any): Game => ({
   id: r.id,
   code: r.code,
@@ -119,17 +122,40 @@ export class SupabaseBackend implements Backend {
       );
     }
 
-    // 0003 is what keeps answers anonymous. Running without it looks fine
-    // until the first all-play round quietly names every author, so fail
-    // loudly here instead.
-    const { error: anonMissing } = await this.client.rpc('round_progress', {
-      p_round: '00000000-0000-0000-0000-000000000000',
-    });
-    if (anonMissing && /does not exist|schema cache/i.test(anonMissing.message)) {
-      throw new BackendError(
-        'Answers would not be anonymous: run supabase/migrations/20260910150000_anonymity.sql in the SQL editor.',
-        'not_configured',
-      );
+    // Every migration that the client depends on gets probed here, at
+    // startup, before anyone has joined.
+    //
+    // The alternative is what actually happened: a host ran a game for twenty
+    // minutes on a database missing one function, and found out when a player
+    // tapped an answer and got "could not find the function public.cast_vote"
+    // in the middle of a round. A missing migration is a setup problem and it
+    // belongs in setup, where falling back to the local backend is merely
+    // inconvenient rather than ruinous.
+    const REQUIRED: { fn: string; args: Record<string, unknown>; why: string }[] = [
+      {
+        fn: 'round_progress',
+        args: { p_round: MISSING_UUID },
+        why: 'answers would not be anonymous',
+      },
+      {
+        fn: 'cast_vote',
+        // The one-tap card votes by side; an older cast_vote has no such
+        // argument and PostgREST cannot find the function at all.
+        args: { p_round: MISSING_UUID, p_option: 0 },
+        why: 'one-tap cards could not be voted on',
+      },
+    ];
+
+    for (const probe of REQUIRED) {
+      const { error: missing } = await this.client.rpc(probe.fn, probe.args);
+      // A live function answers with a game-logic complaint ("no such round").
+      // Only "cannot find it at all" means the migration has not been run.
+      if (missing && /does not exist|schema cache|PGRST202/i.test(missing.message)) {
+        throw new BackendError(
+          `The database is behind this build — ${probe.why}. Run \`npx supabase db push\` and reload.`,
+          'not_configured',
+        );
+      }
     }
     await syncClock(this.client);
   }
