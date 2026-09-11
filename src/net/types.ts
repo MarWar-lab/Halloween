@@ -66,6 +66,8 @@ export interface VoteInput {
   submissionId?: string | null;
   /** Duel only, where the two contestants are named on screen anyway. */
   targetPlayerId?: string | null;
+  /** split: which of the card's two options, 0 or 1. */
+  optionIndex?: number | null;
   score?: number | null;
   guessPlayerId?: string | null;
 }

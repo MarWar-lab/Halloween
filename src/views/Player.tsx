@@ -160,6 +160,21 @@ export function Player({ campfire }: { campfire: Campfire }) {
           </div>
         )}
 
+        {turn.task.kind === 'side' && (
+          // The whole mechanic: two targets, no keyboard, no turn order.
+          <div className="side-pick">
+            {turn.task.options.map((option, i) => (
+              <button
+                key={option}
+                className={`side ${ballot.optionIndex === i ? 'chosen' : ''}`}
+                onClick={() => vote({ optionIndex: i })}
+              >
+                {option}
+              </button>
+            ))}
+          </div>
+        )}
+
         {turn.task.kind === 'sideWithOne' && round && (
           <div className="pick-list">
             {[round.turnPlayerId, round.opponentId]

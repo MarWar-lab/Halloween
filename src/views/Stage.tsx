@@ -5,6 +5,7 @@ import { themeById } from '../game/themes';
 import type { GameSnapshot } from '../net';
 import { castFrom, fireScaleFor } from '../scene/cast';
 import { choicesFor } from '../game/ballot';
+import { splitTally } from '../game/scoring';
 import type { Campfire } from '../state/useCampfire';
 import { CardPanel, Countdown, Leaderboard, cardFor, nameOf } from './shared';
 import { Glyph } from '../ui/Glyph';
@@ -121,6 +122,38 @@ function PhaseDetail({ snapshot }: { snapshot: GameSnapshot }) {
 
   const answered = snapshot.submittedPlayerIds.length;
   const eligible = snapshot.players.length;
+
+  // A split has no answers to read out — the room's shape is the result.
+  if (round.mechanic === 'split') {
+    const card = cardFor(snapshot.game.deckId, round.cardId);
+    const options = card?.options ?? [];
+    const scored = round.phase === 'scored';
+    // Sealed until scoring, like every other vote, so before then the screen
+    // shows only how many have tapped.
+    const tally = scored ? splitTally(snapshot.votes) : null;
+    const high = tally ? Math.max(tally[0], tally[1]) : 0;
+
+    return (
+      <>
+        <div className="stage-split">
+          {options.map((option, i) => (
+            <div
+              key={option}
+              className={`side ${tally && tally[i] === high && high > 0 ? 'won' : ''}`}
+            >
+              {option}
+              {tally && <span className="split-count">{tally[i]}</span>}
+            </div>
+          ))}
+        </div>
+        {!scored && (
+          <p className="stage-note">
+            Tap one. {snapshot.votedPlayerIds.length} of {eligible} in.
+          </p>
+        )}
+      </>
+    );
+  }
 
   switch (round.phase) {
     case 'choosing':

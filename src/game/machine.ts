@@ -48,12 +48,14 @@ export function mechanicsFor(phase: GamePhase): Mechanic[] {
   switch (phase) {
     // The warm-up is always all-play: everyone answers at once, so nobody is
     // singled out before the room has warmed up.
+    // The warm-up is one-tap only. Nobody should have to type a sentence or
+    // be looked at in the first five minutes of a work party.
     case 'warmup':
-      return ['allplay'];
+      return ['split'];
     case 'round1':
-      return ['solo', 'allplay', 'guesswho'];
+      return ['split', 'allplay', 'guesswho', 'solo'];
     case 'round2':
-      return ['solo', 'allplay', 'guesswho'];
+      return ['allplay', 'guesswho', 'solo', 'split'];
     // The finale is duels, so the night ends on a peak rather than trailing off.
     case 'finale':
       return ['duel', 'solo'];
@@ -72,14 +74,23 @@ export const isPlayingPhase = (phase: GamePhase): boolean =>
  */
 export function roundFlow(mechanic: Mechanic): RoundPhase[] {
   switch (mechanic) {
+    // `choosing` used to sit in front of this and had no interface at all —
+    // a phase whose only content was the host pressing past it.
     case 'solo':
-      return ['choosing', 'performing', 'voting', 'scored'];
+      return ['performing', 'voting', 'scored'];
+    // `revealing` used to sit between these two. It cost the host a click per
+    // card to move from "here are the answers" to "now vote on them", when
+    // the answers are on screen either way. The host reads them aloud while
+    // the room votes.
     case 'allplay':
-      return ['submitting', 'revealing', 'voting', 'scored'];
+      return ['submitting', 'voting', 'scored'];
     case 'guesswho':
-      return ['submitting', 'revealing', 'voting', 'scored'];
+      return ['submitting', 'voting', 'scored'];
     case 'duel':
       return ['performing', 'voting', 'scored'];
+    // One tap, and it is over.
+    case 'split':
+      return ['voting', 'scored'];
   }
 }
 

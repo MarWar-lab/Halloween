@@ -17,8 +17,14 @@ export type Heat = 1 | 2 | 3;
  * - `allplay`  everyone answers privately, answers reveal unattributed, all vote
  * - `guesswho` everyone submits a private fact; the group guesses whose it is
  * - `duel`     two players, one prompt, the room picks a winner
+ * - `split`    two options, one tap, the room divides in half
+ *
+ * `split` exists because every other mechanic asks a player to write or to
+ * perform, and a third of any team will do neither. Tapping one of two words
+ * takes three seconds, exposes nobody, and still produces a real answer from
+ * everyone in the room at once.
  */
-export type Mechanic = 'solo' | 'allplay' | 'guesswho' | 'duel';
+export type Mechanic = 'solo' | 'allplay' | 'guesswho' | 'duel' | 'split';
 
 /**
  * Solo cards come in two lanes — the "Trick or Truth" choice. `say` is answered
@@ -42,6 +48,11 @@ export interface Card {
   submitHint?: string;
   /** One line on how the card is won — shown under the prompt. */
   wins: string;
+  /**
+   * `split` only: the two things being chosen between. Kept to two — three
+   * options is a survey, two is an argument.
+   */
+  options?: [string, string];
   /** Timer length in seconds. */
   secs: number;
   /**
@@ -167,6 +178,8 @@ export interface Vote {
   targetPlayerId: string | null;
   /** solo: 1-5 performance score. */
   score: number | null;
+  /** split: which of the card's two options, 0 or 1. */
+  optionIndex: number | null;
   /** guesswho: who they think wrote it. */
   guessPlayerId: string | null;
 }

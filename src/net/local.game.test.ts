@@ -194,16 +194,11 @@ describe('a full game through the local backend', () => {
   });
 
   describe('a solo turn', () => {
-    it('runs choosing → performing → voting → scored and pays the median', async () => {
+    it('runs performing → voting → scored and pays the median', async () => {
       const roundId = await deal('solo');
-      const phases: string[] = [];
-
-      for (const next of ['performing', 'voting'] as const) {
-        tab('host');
-        phases.push(seenBy(backend, 'host', gameId).round!.phase);
-        await backend.advanceRound(roundId, next, next === 'performing' ? 60 : null);
-      }
-      expect(phases).toEqual(['choosing', 'performing']);
+      tab('host');
+      expect(seenBy(backend, 'host', gameId).round!.phase).toBe('performing');
+      await backend.advanceRound(roundId, 'voting', null);
 
       for (const [who, score] of [['ben', 5], ['cleo', 3], ['host', 1]] as const) {
         tab(who);

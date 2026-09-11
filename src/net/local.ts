@@ -17,6 +17,7 @@ import {
   scoreDuel,
   scoreGuessWho,
   scoreSolo,
+  scoreSplit,
 } from '../game/scoring';
 import { visibleSubmissions, visibleVotes } from '../game/sealing';
 import type {
@@ -429,6 +430,9 @@ export class LocalBackend implements Backend {
         case 'duel':
           results = scoreDuel(round.turnPlayerId ?? '', round.opponentId ?? '', votes);
           break;
+        case 'split':
+          results = scoreSplit(votes);
+          break;
       }
 
       for (const [playerId, points] of Object.entries(results.points)) {
@@ -521,6 +525,7 @@ export class LocalBackend implements Backend {
         existing.submissionId = vote.submissionId ?? null;
         existing.targetPlayerId = target;
         existing.score = vote.score ?? null;
+        existing.optionIndex = vote.optionIndex ?? null;
         existing.guessPlayerId = vote.guessPlayerId ?? null;
         return;
       }
@@ -531,6 +536,7 @@ export class LocalBackend implements Backend {
         submissionId: vote.submissionId ?? null,
         targetPlayerId: target,
         score: vote.score ?? null,
+        optionIndex: vote.optionIndex ?? null,
         guessPlayerId: vote.guessPlayerId ?? null,
       });
     });

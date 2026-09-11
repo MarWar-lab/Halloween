@@ -67,6 +67,7 @@ describe('reading back one voter’s ballot', () => {
     submissionId: null,
     targetPlayerId: null,
     score: null,
+    optionIndex: null,
     guessPlayerId: null,
     ...over,
   });
@@ -93,6 +94,7 @@ describe('reading back one voter’s ballot', () => {
       score: null,
       targetPlayerId: null,
       submissionId: null,
+      optionIndex: null,
       guesses: {},
     });
   });

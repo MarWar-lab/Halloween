@@ -85,6 +85,7 @@ const rowToVote = (r: any): Vote => ({
   submissionId: r.submission_id ?? null,
   targetPlayerId: r.target_player_id,
   score: r.score,
+  optionIndex: r.option_index ?? null,
   guessPlayerId: r.guess_player_id,
 });
 
@@ -390,6 +391,7 @@ export class SupabaseBackend implements Backend {
       p_guess: vote.guessPlayerId ?? null,
       p_voter: playerId ?? null,
       p_submission: vote.submissionId ?? null,
+      p_option: vote.optionIndex ?? null,
     });
     if (error) fail('Could not record your vote', error);
   }

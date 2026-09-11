@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { deckById } from '../game/decks';
 import { deal } from '../game/deal';
 import { heatCapFor, isPlayingPhase, nextGamePhase, nextRoundPhase, roundFlow } from '../game/machine';
@@ -9,7 +9,7 @@ import { castFrom, fireScaleFor } from '../scene/cast';
 import type { Backend, GameSnapshot } from '../net';
 import type { Campfire } from '../state/useCampfire';
 import { CardPanel, Countdown, HowToPlay, Leaderboard, cardFor, nameOf } from './shared';
-import { choicesFor, myBallot } from '../game/ballot';
+import { choicesFor, eligibleVoters, myBallot } from '../game/ballot';
 
 const PHASE_LABEL: Record<string, string> = {
   lobby: 'Lobby',
@@ -133,6 +133,46 @@ export function Host({ campfire }: { campfire: Campfire }) {
         next === 'performing' ? (card?.secs ?? null) : null,
       );
     });
+
+  // ── the game moves itself on ─────────────────────────────────────────────
+  // The slowest thing in a round was never a player. It was the gap between
+  // the last person tapping and the host noticing they had. Once the room is
+  // done, the round advances on its own after a beat long enough to see the
+  // last answer land. The host can still press the button early; this only
+  // removes the waiting.
+  const auto = useRef<string | null>(null);
+  useEffect(() => {
+    if (!round || round.results || !backend || !snap) return;
+    const everyone = snap.players.map((p) => p.id);
+    const done =
+      round.phase === 'submitting'
+        ? everyone.every((id) => snap.submittedPlayerIds.includes(id))
+        : round.phase === 'voting'
+          ? eligibleVoters(round, snap.players).every((p) =>
+              snap.votedPlayerIds.includes(p.id),
+            )
+          : false;
+    if (!done) return;
+
+    const key = `${round.id}:${round.phase}`;
+    if (auto.current === key) return;
+    auto.current = key;
+
+    const t = window.setTimeout(() => {
+      const next = nextRoundPhase(round.mechanic, round.phase);
+      void (next === 'scored'
+        ? backend.scoreRound(round.id)
+        : backend.advanceRound(round.id, next, null));
+    }, 1400);
+    return () => window.clearTimeout(t);
+  }, [
+    round?.id,
+    round?.phase,
+    round?.results,
+    snap?.submittedPlayerIds.length,
+    snap?.votedPlayerIds.length,
+    snap?.players.length,
+  ]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const advanceChapter = async () => {
     const phase = nextGamePhase(snap.game.phase);
@@ -527,6 +567,7 @@ function PlayPanel({
   onError: (message: string) => void;
 }) {
   const round = snapshot.round;
+  const playCard = cardFor(snapshot.game.deckId, round?.cardId);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
 
   if (!round || (round.phase !== 'submitting' && round.phase !== 'voting')) return null;
@@ -604,6 +645,18 @@ function PlayPanel({
                     onClick={() => void cast(player.id, { score: n })}
                   >
                     {n}
+                  </button>
+                ))}
+              </div>
+            ) : round.mechanic === 'split' ? (
+              <div className="side-pick side-pick-sm">
+                {(playCard?.options ?? []).map((option: string, i: number) => (
+                  <button
+                    key={option}
+                    className={`side ${ballot.optionIndex === i ? 'chosen' : ''}`}
+                    onClick={() => void cast(player.id, { optionIndex: i })}
+                  >
+                    {option}
                   </button>
                 ))}
               </div>

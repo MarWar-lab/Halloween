@@ -37,8 +37,10 @@ describe('game phases', () => {
     }
   });
 
-  it('opens with an all-play so nobody is singled out first', () => {
-    expect(mechanicsFor('warmup')).toEqual(['allplay']);
+  it('opens with the one-tap card, so the first thing asked of anyone is a tap', () => {
+    // Stronger than the all-play this replaced: an all-play still asks a
+    // nervous person to compose a sentence in front of strangers.
+    expect(mechanicsFor('warmup')).toEqual(['split']);
   });
 
   it('ends on duels', () => {
@@ -47,18 +49,25 @@ describe('game phases', () => {
 });
 
 describe('round flow', () => {
-  it('seals before it reveals, and reveals before it votes', () => {
+  it('seals before it opens the vote', () => {
     const flow = roundFlow('allplay');
-    expect(flow.indexOf('submitting')).toBeLessThan(flow.indexOf('revealing'));
-    expect(flow.indexOf('revealing')).toBeLessThan(flow.indexOf('voting'));
+    expect(flow.indexOf('submitting')).toBeLessThan(flow.indexOf('voting'));
   });
 
-  it('lets a solo player choose their lane first', () => {
-    expect(roundFlow('solo')[0]).toBe('choosing');
+  it('costs the host as few clicks as the mechanic allows', () => {
+    // Every phase is a click the host has to make while the room waits. A
+    // `choosing` phase with no interface, and a `revealing` phase that showed
+    // exactly what `voting` shows, were two of those clicks per card.
+    expect(roundFlow('split')).toEqual(['voting', 'scored']);
+    expect(roundFlow('allplay')).toEqual(['submitting', 'voting', 'scored']);
+    expect(roundFlow('solo')[0]).toBe('performing');
+    for (const m of ['solo', 'allplay', 'guesswho', 'duel', 'split'] as const) {
+      expect(roundFlow(m).length).toBeLessThanOrEqual(3);
+    }
   });
 
   it('always terminates at scored', () => {
-    for (const m of ['solo', 'allplay', 'guesswho', 'duel'] as const) {
+    for (const m of ['solo', 'allplay', 'guesswho', 'duel', 'split'] as const) {
       let phase = roundFlow(m)[0];
       for (let i = 0; i < 10; i += 1) phase = nextRoundPhase(m, phase);
       expect(phase).toBe('scored');

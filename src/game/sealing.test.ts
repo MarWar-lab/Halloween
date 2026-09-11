@@ -9,8 +9,8 @@ const subs: Submission[] = [
 ];
 
 const votes: Vote[] = [
-  { id: 'v1', roundId: 'r', voterId: 'me', submissionId: 's2', targetPlayerId: 'other', score: null, guessPlayerId: null },
-  { id: 'v2', roundId: 'r', voterId: 'other', submissionId: 's1', targetPlayerId: 'me', score: null, guessPlayerId: null },
+  { id: 'v1', roundId: 'r', voterId: 'me', submissionId: 's2', targetPlayerId: 'other', score: null, optionIndex: null, guessPlayerId: null },
+  { id: 'v2', roundId: 'r', voterId: 'other', submissionId: 's1', targetPlayerId: 'me', score: null, optionIndex: null, guessPlayerId: null },
 ];
 
 describe('submission sealing', () => {

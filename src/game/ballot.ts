@@ -62,6 +62,8 @@ export interface Ballot {
   targetPlayerId: string | null;
   /** allplay: the answer they picked. */
   submissionId: string | null;
+  /** split: which of the two options, 0 or 1. */
+  optionIndex: number | null;
   /** guesswho: submission id → who they think wrote it. */
   guesses: Record<string, string>;
 }
@@ -77,6 +79,7 @@ export function myBallot(votes: Vote[], voterId: string | null): Ballot {
     score: first?.score ?? null,
     targetPlayerId: first?.targetPlayerId ?? null,
     submissionId: first?.submissionId ?? null,
+    optionIndex: first?.optionIndex ?? null,
     guesses,
   };
 }

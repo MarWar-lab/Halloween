@@ -18,12 +18,11 @@ describe('setting up a round', () => {
     }
   });
 
-  it('does not put a clock on the solo lane choice', () => {
-    // A solo turn opens with the player picking Trick or Truth, which is not a
-    // race — the timer starts when they start.
-    const card = eligible(deck, { heatCap: 3, usedIds: [], mechanic: 'solo' })[0];
-    expect(planFor(card).phase).toBe('choosing');
-    expect(planFor(card).secs).toBeNull();
+  it('deals a one-tap card straight into the vote', () => {
+    // Nothing to write and nobody to watch, so there is no phase in front of
+    // it — the card appears and the room answers.
+    const card = eligible(deck, { heatCap: 1, usedIds: [], mechanic: 'split' })[0];
+    expect(planFor(card).phase).toBe('voting');
   });
 });
 
@@ -32,10 +31,10 @@ describe('dealing into a phase', () => {
     expect(deal({ ...base, phase: 'intermission' })).toMatchObject({ reason: 'not-a-playing-phase' });
   });
 
-  it('only ever deals all-play in the warm-up, so nobody is singled out first', () => {
+  it('only ever deals the one-tap card in the warm-up', () => {
     for (let i = 0; i < 12; i += 1) {
       const out = deal({ ...base, phase: 'warmup', heatCap: 1 });
-      expect(out.ok && out.plan.mechanic).toBe('allplay');
+      expect(out.ok && out.plan.mechanic).toBe('split');
     }
   });
 

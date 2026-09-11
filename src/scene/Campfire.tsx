@@ -24,6 +24,13 @@ export interface SceneCharacter {
   mark?: 'sealed' | 'voted' | null;
   /** The round is still waiting on them. Drawn dimmer. */
   dim?: boolean;
+  /**
+   * Which half of a split they landed on, once that is public.
+   *
+   * Only ever set at `scored`. Before then a vote is sealed, and a character
+   * standing on the left would announce it.
+   */
+  side?: 0 | 1 | null;
   away?: boolean;
 }
 
@@ -217,8 +224,10 @@ export function CampfireScene({
       for (const { c, seat, i } of order) {
         // Whoever the round is still waiting on sits back in the dark.
         ctx.globalAlpha = c.dim ? 0.62 : 1;
+        // A split pushes the room apart, so the answer is the picture.
+        const drift = c.side == null ? 0 : (c.side === 0 ? -1 : 1) * width * 0.09;
         drawCharacter(ctx, {
-          x: seat.x,
+          x: seat.x + drift,
           y: seat.y,
           scale: seat.scale * s,
           look: c.look,
@@ -248,7 +257,8 @@ export function CampfireScene({
       // Marks and nameplates last, so nobody's is hidden behind a neighbour.
       for (const { c, seat } of order) {
         if (c.mark) {
-          drawMark(ctx, seat.x, seat.y, seat.scale * s, c.mark, th, headTop(th, c.look));
+          const drift = c.side == null ? 0 : (c.side === 0 ? -1 : 1) * width * 0.09;
+          drawMark(ctx, seat.x + drift, seat.y, seat.scale * s, c.mark, th, headTop(th, c.look));
         }
       }
 

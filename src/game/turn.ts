@@ -32,6 +32,8 @@ export type Task =
   | { kind: 'guess' }
   /** Choose between two duellists. */
   | { kind: 'sideWithOne' }
+  /** Two options on the card. One tap and you are done. */
+  | { kind: 'side'; options: [string, string] }
   /** The round is over and you can see how it went. */
   | { kind: 'result' };
 
@@ -178,6 +180,19 @@ export function turnFor(ctx: Context): TurnView {
           };
         }
         return { task: { kind: 'sideWithOne' }, headline: 'Who took it?', canPass: false };
+      }
+
+      if (round.mechanic === 'split') {
+        const options = ctx.card?.options;
+        if (!options) {
+          return { task: { kind: 'idle' }, headline: 'Waiting for the card…', canPass: false };
+        }
+        return {
+          task: { kind: 'side', options },
+          headline: ctx.card?.title ?? 'Pick one',
+          detail: voted ? 'Tap the other to change your mind.' : undefined,
+          canPass: false,
+        };
       }
 
       if (round.mechanic === 'guesswho') {

@@ -67,11 +67,18 @@ export function castFrom(
           ? 'voted'
           : null;
 
+    // Sealed until scoring, exactly like every other vote.
+    const side =
+      round?.mechanic === 'split' && round.phase === 'scored'
+        ? (snap.votes.find((v) => v.voterId === p.id)?.optionIndex as 0 | 1 | undefined) ?? null
+        : null;
+
     return {
       id: p.id,
       name: p.name,
       look: p.look,
       state,
+      side,
       mark,
       // Dim whoever the room is still waiting on, so "who are we waiting for"
       // is answerable in one glance across nine seats through a video codec.

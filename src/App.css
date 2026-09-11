@@ -634,3 +634,25 @@ select { width: 100%; background: var(--night); color: var(--text);
   .player-gap { display: none; }
   .player-canvas { transition: none; }
 }
+
+/* ── the one-tap card ─────────────────────────────────────── */
+/* Two targets, each big enough to hit without looking. This is the whole
+   interaction for a whole card, so it gets the whole width. */
+.side-pick { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.side { min-height: 92px; padding: 14px 12px; display: flex; align-items: center;
+  justify-content: center; text-align: center; font-family: var(--display);
+  font-size: clamp(16px, 4.4vw, 21px); font-weight: 900; line-height: 1.18;
+  background: var(--panel); color: var(--text); border: 1px solid var(--edge);
+  border-radius: var(--r-md); cursor: pointer; }
+.side:hover { border-color: var(--ember); }
+.side.chosen { background: var(--ember); border-color: var(--ember); color: #1a1206; }
+.side-pick-sm .side { min-height: 52px; font-size: 14px; }
+
+/* On the shared screen, with the count once voting has closed. */
+.stage-split { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; width: 100%; }
+.stage-split .side { min-height: 104px; font-size: clamp(18px, 2.1vw, 30px); cursor: default;
+  flex-direction: column; gap: 8px; }
+.stage-split .side.won { border-color: var(--ember); box-shadow: 0 0 26px rgba(240,168,60,.28); }
+.split-count { font-family: var(--mono); font-size: 26px; font-weight: 700;
+  color: var(--ember); font-variant-numeric: tabular-nums; }
+.stage-split .side.chosen .split-count { color: #1a1206; }

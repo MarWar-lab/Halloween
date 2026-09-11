@@ -179,6 +179,48 @@ export function scoreDuel(aId: string, bId: string, votes: Vote[]): RoundResults
   return { points, notes };
 }
 
+/**
+ * Split: two options, one tap each.
+ *
+ * A point for answering, and two more for landing on the smaller side. The
+ * reward goes to the minority on purpose — a party game should pay people for
+ * answering honestly when their answer is odd, not for guessing where the room
+ * already is. A dead heat pays everyone the bonus, because a room split down
+ * the middle is the best possible outcome of a question like this.
+ */
+export function scoreSplit(votes: Vote[]): RoundResults {
+  const points: Record<string, number> = {};
+  const notes: Record<string, string> = {};
+  const counted = validVotes(votes).filter(
+    (v) => v.optionIndex === 0 || v.optionIndex === 1,
+  );
+
+  const tally = [0, 0];
+  for (const v of counted) tally[v.optionIndex as number] += 1;
+  for (const v of counted) points[v.voterId] = 1;
+
+  if (counted.length === 0) return { points, notes };
+
+  const drawn = tally[0] === tally[1];
+  const smaller = tally[0] < tally[1] ? 0 : 1;
+  for (const v of counted) {
+    if (drawn || v.optionIndex === smaller) {
+      points[v.voterId] += 2;
+      notes[v.voterId] = drawn ? 'split down the middle' : 'with the few';
+    }
+  }
+  return { points, notes };
+}
+
+/** How a split round came out, for the screen to draw. */
+export const splitTally = (votes: Vote[]): [number, number] => {
+  const tally: [number, number] = [0, 0];
+  for (const v of validVotes(votes)) {
+    if (v.optionIndex === 0 || v.optionIndex === 1) tally[v.optionIndex] += 1;
+  }
+  return tally;
+};
+
 /** Merge a round's points into running totals. */
 export function applyResults(
   totals: Record<string, number>,

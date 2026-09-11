@@ -16,6 +16,7 @@ const vote = (v: Partial<Vote> & { voterId: string }): Vote => ({
   submissionId: null,
   targetPlayerId: null,
   score: null,
+  optionIndex: null,
   guessPlayerId: null,
   ...v,
 });

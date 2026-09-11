@@ -252,6 +252,45 @@ check('the Pass costs exactly zero', after.score === before, `${before} -> ${aft
 check('the Pass is recorded', after.pass_spent === true);
 check('the Pass closes the card', closed.phase === 'scored', closed.phase);
 
+console.log('\n=== the one-tap card ===');
+await be(HOST);
+const sp = (await db.query(
+  `select * from start_round($1,'split-hero','split','say',null,null,'voting',30)`,
+  [game.id])).rows[0];
+check('a split is dealt straight into the vote', sp.phase === 'voting', sp.phase);
+
+// Three one way, one the other.
+for (const [uid, side] of [[HOST, 0], [ANA, 0], [BEN, 1]]) {
+  await be(uid);
+  await db.query(`select cast_vote($1,null,null,null,null,null,$2)`, [sp.id, side]);
+}
+await be(HOST);
+await db.query(`select cast_vote($1,null,null,null,$2,null,0)`, [sp.id, proxy.id]);
+
+let noSide = null;
+try {
+  await be(BEN);
+  await db.query(`select cast_vote($1,null,null,null,null,null,null)`, [sp.id]);
+} catch (e) { noSide = e.message; }
+check('a split vote must name a side', !!noSide, (noSide ?? '').split('\n')[0]);
+
+await be(HOST);
+const beforeSplit = Object.fromEntries(
+  (await db.query(`select id, score from players where game_id=$1`, [game.id])).rows.map(
+    (r) => [r.id, r.score]),
+);
+await db.query(`select score_round($1)`, [sp.id]);
+const afterSplit = Object.fromEntries(
+  (await db.query(`select id, score from players where game_id=$1`, [game.id])).rows.map(
+    (r) => [r.id, r.score]),
+);
+const gained = (id) => afterSplit[id] - beforeSplit[id];
+// Ben was alone on side 1: a point for answering plus two for the smaller half.
+check('the smaller half is worth more', gained(pb.id) === 3, `Ben +${gained(pb.id)}`);
+check('the larger half still scores', gained(pa.id) === 1, `Ana +${gained(pa.id)}`);
+check('everybody who tapped scored something',
+  [ph.id, pa.id, pb.id, proxy.id].every((id) => gained(id) > 0));
+
 console.log('\n=== re-applying over a database that already has a game in it ===');
 // This is the real situation on the hosted project: 0001 and 0002 were
 // applied by hand, so `supabase db push` finds an empty migration table and
