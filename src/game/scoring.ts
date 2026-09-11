@@ -221,6 +221,50 @@ export const splitTally = (votes: Vote[]): [number, number] => {
   return tally;
 };
 
+/**
+ * Poll: everybody names a person, and the count is the result.
+ *
+ * There is no second vote, because there is nothing left to decide — the
+ * tally already said it. Three points to whoever the room named, one to
+ * everyone who answered, and one more to those who read the room correctly.
+ * A tie names both.
+ */
+export function scorePoll(votes: Vote[]): RoundResults {
+  const points: Record<string, number> = {};
+  const notes: Record<string, string> = {};
+  const counted = validVotes(votes).filter((v) => v.targetPlayerId);
+
+  const tally: Record<string, number> = {};
+  for (const v of counted) {
+    points[v.voterId] = (points[v.voterId] ?? 0) + 1;
+    tally[v.targetPlayerId as string] = (tally[v.targetPlayerId as string] ?? 0) + 1;
+  }
+
+  const top = Math.max(0, ...Object.values(tally));
+  if (top === 0) return { points, notes };
+
+  const winners = Object.keys(tally).filter((id) => tally[id] === top);
+  for (const id of winners) {
+    points[id] = (points[id] ?? 0) + 3;
+    notes[id] = `named by ${top}`;
+  }
+  for (const v of counted) {
+    if (winners.includes(v.targetPlayerId as string)) points[v.voterId] += 1;
+  }
+  return { points, notes };
+}
+
+/** How a poll came out, most-named first. */
+export const pollTally = (votes: Vote[]): { playerId: string; count: number }[] => {
+  const tally: Record<string, number> = {};
+  for (const v of validVotes(votes)) {
+    if (v.targetPlayerId) tally[v.targetPlayerId] = (tally[v.targetPlayerId] ?? 0) + 1;
+  }
+  return Object.entries(tally)
+    .map(([playerId, count]) => ({ playerId, count }))
+    .sort((a, b) => b.count - a.count);
+};
+
 /** Merge a round's points into running totals. */
 export function applyResults(
   totals: Record<string, number>,

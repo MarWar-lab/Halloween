@@ -182,6 +182,23 @@ export function Player({ campfire }: { campfire: Campfire }) {
           </div>
         )}
 
+        {turn.task.kind === 'namePerson' && (
+          // Naming yourself is a legitimate answer to "who is most likely
+          // to…", so nobody is filtered out of this list.
+          <div className="pick-list name-list">
+            {snap.players.map((p) => (
+              <button
+                key={p.id}
+                className={`pick ${ballot.targetPlayerId === p.id ? 'chosen' : ''}`}
+                onClick={() => vote({ targetPlayerId: p.id })}
+              >
+                <span className="pick-text">{p.name}</span>
+                {p.id === myId && <span className="pick-flag">you</span>}
+              </button>
+            ))}
+          </div>
+        )}
+
         {turn.task.kind === 'sideWithOne' && round && (
           <div className="pick-list">
             {[round.turnPlayerId, round.opponentId]

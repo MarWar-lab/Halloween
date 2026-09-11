@@ -663,6 +663,18 @@ function PlayPanel({
                   </button>
                 ))}
               </div>
+            ) : round.mechanic === 'poll' ? (
+              <div className="pick-list name-list">
+                {snapshot.players.map((target) => (
+                  <button
+                    key={target.id}
+                    className={`pick ${ballot.targetPlayerId === target.id ? 'chosen' : ''}`}
+                    onClick={() => void cast(player.id, { targetPlayerId: target.id })}
+                  >
+                    <span className="pick-text">{target.name}</span>
+                  </button>
+                ))}
+              </div>
             ) : round.mechanic === 'split' ? (
               <div className="side-pick side-pick-sm">
                 {(playCard?.options ?? []).map((option: string, i: number) => (

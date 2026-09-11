@@ -291,6 +291,39 @@ check('the larger half still scores', gained(pa.id) === 1, `Ana +${gained(pa.id)
 check('everybody who tapped scored something',
   [ph.id, pa.id, pb.id, proxy.id].every((id) => gained(id) > 0));
 
+console.log('\n=== the poll ===');
+await be(HOST);
+const pl = (await db.query(
+  `select * from start_round($1,'poll-decorate','poll','say',null,null,'voting',30)`,
+  [game.id])).rows[0];
+check('a poll is dealt straight into the vote', pl.phase === 'voting', pl.phase);
+
+// Two name Ana, one names Ben, and one names themselves.
+for (const [uid, target] of [[HOST, pa.id], [BEN, pa.id], [ANA, pb.id]]) {
+  await be(uid);
+  await db.query(`select cast_vote($1,$2,null,null,null,null,null)`, [pl.id, target]);
+}
+await be(ANA);
+let selfOk = true;
+try {
+  await db.query(`select cast_vote($1,$2,null,null,null,null,null)`, [pl.id, pa.id]);
+} catch { selfOk = false; }
+check('naming yourself is a legitimate answer to a poll', selfOk);
+
+await be(HOST);
+const beforePoll = Object.fromEntries(
+  (await db.query(`select id, score from players where game_id=$1`, [game.id])).rows.map(
+    (r) => [r.id, r.score]));
+await db.query(`select score_round($1)`, [pl.id]);
+const afterPoll = Object.fromEntries(
+  (await db.query(`select id, score from players where game_id=$1`, [game.id])).rows.map(
+    (r) => [r.id, r.score]));
+const got = (id) => afterPoll[id] - beforePoll[id];
+// Ana was named twice (by Hana and Ben) and also named herself once.
+// She takes the 3 for being named, plus 1 for answering, plus 1 for calling it.
+check('the room’s choice is paid without a second vote', got(pa.id) >= 3, `Ana +${got(pa.id)}`);
+check('everyone who named somebody scored', [ph.id, pb.id].every((id) => got(id) > 0));
+
 console.log('\n=== re-applying over a database that already has a game in it ===');
 // This is the real situation on the hosted project: 0001 and 0002 were
 // applied by hand, so `supabase db push` finds an empty migration table and

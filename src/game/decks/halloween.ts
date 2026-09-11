@@ -491,20 +491,6 @@ const cards: CardSeed[] = [
     tags: ['warmup', 'opinion'],
   },
   {
-    id: 'most-likely',
-    mechanic: 'allplay',
-    lane: 'say',
-    heat: 1,
-    title: 'Most Likely To',
-    prompt:
-      'Which of us has decorated the most of their house this month? One name. No commentary.',
-    submitHint: 'A name. Nothing else.',
-    wins: 'The name that comes up most is read out last.',
-    secs: 45,
-    needsDevice: true,
-    tags: ['warmup', 'team'],
-  },
-  {
     id: 'witch-name',
     mechanic: 'allplay',
     lane: 'say',
@@ -788,6 +774,86 @@ const cards: CardSeed[] = [
     secs: 30,
     needsDevice: false,
     tags: ['fast'],
+  },
+  // ─── POLL ─────────────────────────────────────────────────────────────────
+  // Tap a name. The count is the answer, and there is no second vote — for a
+  // question like "who is most likely to decorate the whole house", asking
+  // the room to then vote on whose answer was best decides nothing that the
+  // tally has not already decided.
+  //
+  // Every one of these is affectionate on purpose. A poll about colleagues is
+  // the one card type that could sting, so none of them names a failing.
+  {
+    id: 'poll-decorate',
+    mechanic: 'poll',
+    lane: 'say',
+    heat: 1,
+    title: 'The Decorated House',
+    prompt: 'Who among us has done the most to their house this month?',
+    wins: 'Three points to whoever the room names. One for answering, one more for reading the room.',
+    secs: 30,
+    needsDevice: false,
+    tags: ['warmup', 'fast', 'team'],
+  },
+  {
+    id: 'poll-survive',
+    mechanic: 'poll',
+    lane: 'say',
+    heat: 1,
+    title: 'Final Survivor',
+    prompt: 'This team is in a horror film. Who is still standing at the end of it?',
+    wins: 'Three points to whoever the room names. One for answering, one more for reading the room.',
+    secs: 30,
+    needsDevice: false,
+    tags: ['warmup', 'fast', 'team'],
+  },
+  {
+    id: 'poll-unexplained',
+    mechanic: 'poll',
+    lane: 'say',
+    heat: 1,
+    title: 'The Witness',
+    prompt: 'Who here has most likely seen something they genuinely cannot explain?',
+    wins: 'Three points to whoever the room names. One for answering, one more for reading the room.',
+    secs: 30,
+    needsDevice: false,
+    tags: ['warmup', 'fast', 'team'],
+  },
+  {
+    id: 'poll-costume',
+    mechanic: 'poll',
+    lane: 'say',
+    heat: 1,
+    title: 'The Commitment',
+    prompt: 'Whose costume this year will have taken the most work?',
+    wins: 'Three points to whoever the room names. One for answering, one more for reading the room.',
+    secs: 30,
+    needsDevice: false,
+    tags: ['warmup', 'fast', 'team'],
+  },
+  {
+    id: 'poll-supply',
+    mechanic: 'poll',
+    lane: 'say',
+    heat: 1,
+    title: 'The Hoard',
+    prompt: 'Whose desk drawer has the most confectionery in it at this exact moment?',
+    wins: 'Three points to whoever the room names. One for answering, one more for reading the room.',
+    secs: 30,
+    needsDevice: false,
+    tags: ['warmup', 'fast', 'team'],
+  },
+  {
+    id: 'poll-scream',
+    mechanic: 'poll',
+    lane: 'say',
+    heat: 2,
+    title: 'First To Go',
+    prompt: 'A door slams somewhere in the building. Who screams first?',
+    wins: 'Three points to whoever the room names. One for answering, one more for reading the room.',
+    secs: 30,
+    needsDevice: false,
+    tags: ['fast', 'team'],
   },
 ];
 

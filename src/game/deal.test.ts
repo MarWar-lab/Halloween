@@ -31,10 +31,10 @@ describe('dealing into a phase', () => {
     expect(deal({ ...base, phase: 'intermission' })).toMatchObject({ reason: 'not-a-playing-phase' });
   });
 
-  it('only ever deals the one-tap card in the warm-up', () => {
-    for (let i = 0; i < 12; i += 1) {
+  it('only ever deals tap-only cards in the warm-up', () => {
+    for (let i = 0; i < 24; i += 1) {
       const out = deal({ ...base, phase: 'warmup', heatCap: 1 });
-      expect(out.ok && out.plan.mechanic).toBe('split');
+      expect(['split', 'poll']).toContain(out.ok && out.plan.mechanic);
     }
   });
 

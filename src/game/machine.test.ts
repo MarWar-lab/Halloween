@@ -37,10 +37,20 @@ describe('game phases', () => {
     }
   });
 
-  it('opens with the one-tap card, so the first thing asked of anyone is a tap', () => {
+  it('opens with tap-only cards, so the first thing asked of anyone is a tap', () => {
     // Stronger than the all-play this replaced: an all-play still asks a
     // nervous person to compose a sentence in front of strangers.
-    expect(mechanicsFor('warmup')).toEqual(['split']);
+    const TAP_ONLY = ['split', 'poll'];
+    expect(mechanicsFor('warmup').length).toBeGreaterThan(0);
+    for (const m of mechanicsFor('warmup')) expect(TAP_ONLY).toContain(m);
+  });
+
+  it('never asks a tap-only card for a second, meaningless vote', () => {
+    // "Who is most likely to decorate the whole house" is answered by the
+    // count of names. Voting again on whose answer was best decides nothing.
+    for (const m of ['split', 'poll'] as const) {
+      expect(roundFlow(m)).toEqual(['voting', 'scored']);
+    }
   });
 
   it('ends on duels', () => {

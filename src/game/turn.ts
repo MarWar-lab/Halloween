@@ -34,6 +34,8 @@ export type Task =
   | { kind: 'sideWithOne' }
   /** Two options on the card. One tap and you are done. */
   | { kind: 'side'; options: [string, string] }
+  /** Name a person. The count of names is the whole result. */
+  | { kind: 'namePerson' }
   /** The round is over and you can see how it went. */
   | { kind: 'result' };
 
@@ -180,6 +182,15 @@ export function turnFor(ctx: Context): TurnView {
           };
         }
         return { task: { kind: 'sideWithOne' }, headline: 'Who took it?', canPass: false };
+      }
+
+      if (round.mechanic === 'poll') {
+        return {
+          task: { kind: 'namePerson' },
+          headline: ctx.card?.title ?? 'Name someone',
+          detail: voted ? 'Tap another name to change your mind.' : 'One name. The count decides it.',
+          canPass: false,
+        };
       }
 
       if (round.mechanic === 'split') {

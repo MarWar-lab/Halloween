@@ -18,13 +18,14 @@ export type Heat = 1 | 2 | 3;
  * - `guesswho` everyone submits a private fact; the group guesses whose it is
  * - `duel`     two players, one prompt, the room picks a winner
  * - `split`    two options, one tap, the room divides in half
+ * - `poll`     tap a person; the count of names is the answer
  *
  * `split` exists because every other mechanic asks a player to write or to
  * perform, and a third of any team will do neither. Tapping one of two words
  * takes three seconds, exposes nobody, and still produces a real answer from
  * everyone in the room at once.
  */
-export type Mechanic = 'solo' | 'allplay' | 'guesswho' | 'duel' | 'split';
+export type Mechanic = 'solo' | 'allplay' | 'guesswho' | 'duel' | 'split' | 'poll';
 
 /**
  * Solo cards come in two lanes — the "Trick or Truth" choice. `say` is answered

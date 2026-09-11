@@ -51,11 +51,11 @@ export function mechanicsFor(phase: GamePhase): Mechanic[] {
     // The warm-up is one-tap only. Nobody should have to type a sentence or
     // be looked at in the first five minutes of a work party.
     case 'warmup':
-      return ['split'];
+      return ['split', 'poll'];
     case 'round1':
-      return ['split', 'allplay', 'guesswho', 'solo'];
+      return ['split', 'poll', 'allplay', 'guesswho', 'solo'];
     case 'round2':
-      return ['allplay', 'guesswho', 'solo', 'split'];
+      return ['allplay', 'guesswho', 'solo', 'split', 'poll'];
     // The finale is duels, so the night ends on a peak rather than trailing off.
     case 'finale':
       return ['duel', 'solo'];
@@ -90,6 +90,15 @@ export function roundFlow(mechanic: Mechanic): RoundPhase[] {
       return ['performing', 'voting', 'scored'];
     // One tap, and it is over.
     case 'split':
+      return ['voting', 'scored'];
+    /**
+     * Also one tap — and deliberately no second round of voting.
+     *
+     * For a question like "who is most likely to decorate the whole house",
+     * the count of names IS the answer. Asking the room to then vote on which
+     * answer was best is a step that means nothing, and it was in here.
+     */
+    case 'poll':
       return ['voting', 'scored'];
   }
 }

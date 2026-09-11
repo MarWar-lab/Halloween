@@ -5,7 +5,7 @@ import { themeById } from '../game/themes';
 import type { GameSnapshot } from '../net';
 import { castFrom, fireScaleFor } from '../scene/cast';
 import { choicesFor } from '../game/ballot';
-import { splitTally } from '../game/scoring';
+import { pollTally, splitTally } from '../game/scoring';
 import type { Campfire } from '../state/useCampfire';
 import { CardPanel, Countdown, Leaderboard, Progress, cardFor, nameOf } from './shared';
 import { Glyph } from '../ui/Glyph';
@@ -123,6 +123,32 @@ function PhaseDetail({ snapshot }: { snapshot: GameSnapshot }) {
 
   const answered = snapshot.submittedPlayerIds.length;
   const eligible = snapshot.players.length;
+
+  // A poll has no answers either: the count of names is the whole result,
+  // which is why it has no second round of voting.
+  if (round.mechanic === 'poll') {
+    const scored = round.phase === 'scored';
+    const tally = scored ? pollTally(snapshot.votes) : [];
+    const top = tally[0]?.count ?? 0;
+    return (
+      <>
+        {scored ? (
+          <ul className="poll-tally">
+            {tally.map(({ playerId, count }) => (
+              <li key={playerId} className={count === top ? 'won' : undefined}>
+                <span>{nameOf(snapshot.players, playerId)}</span>
+                <em>{count}</em>
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="stage-note">
+            Name one of us. {snapshot.votedPlayerIds.length} of {eligible} in.
+          </p>
+        )}
+      </>
+    );
+  }
 
   // A split has no answers to read out — the room's shape is the result.
   if (round.mechanic === 'split') {

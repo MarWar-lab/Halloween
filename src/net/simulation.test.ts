@@ -219,6 +219,13 @@ async function playOneGame(seed: number, trouble: Trouble[], seen: Seen = emptyS
               { score: 1 + Math.floor(rand() * 5) },
               isProxy ? voter.id : undefined,
             );
+          } else if (live.mechanic === 'poll') {
+            // Naming yourself is allowed, so nobody is excluded.
+            await backend.castVote(
+              live.id,
+              { targetPlayerId: pick(hostSnap.players).id },
+              isProxy ? voter.id : undefined,
+            );
           } else if (live.mechanic === 'duel') {
             const side = pick([live.turnPlayerId, live.opponentId].filter(Boolean) as string[]);
             if (side && side !== voter.id) {
@@ -299,7 +306,7 @@ describe('a whole evening, many times over', () => {
     expect(totalDealt / 30).toBeGreaterThan(2);
 
     // And the run has to have actually been through the game.
-    for (const mechanic of ['split', 'allplay', 'guesswho', 'solo', 'duel']) {
+    for (const mechanic of ['split', 'poll', 'allplay', 'guesswho', 'solo', 'duel']) {
       expect(seen.mechanics[mechanic] ?? 0, `never dealt a ${mechanic} card`).toBeGreaterThan(0);
     }
     for (const phase of ['submitting', 'voting', 'performing']) {

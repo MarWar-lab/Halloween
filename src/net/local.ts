@@ -17,6 +17,7 @@ import {
   scoreDuel,
   scoreGuessWho,
   scoreSolo,
+  scorePoll,
   scoreSplit,
 } from '../game/scoring';
 import { visibleSubmissions, visibleVotes } from '../game/sealing';
@@ -433,6 +434,9 @@ export class LocalBackend implements Backend {
         case 'split':
           results = scoreSplit(votes);
           break;
+        case 'poll':
+          results = scorePoll(votes);
+          break;
       }
 
       for (const [playerId, points] of Object.entries(results.points)) {
@@ -507,7 +511,7 @@ export class LocalBackend implements Backend {
         throw new BackendError('That answer is no longer in play.', 'closed');
       }
       const target = submission ? submission.playerId : (vote.targetPlayerId ?? null);
-      if (target && target === voter) {
+      if (vote.submissionId && target === voter) {
         throw new BackendError('You cannot vote for your own answer.', 'closed');
       }
 
