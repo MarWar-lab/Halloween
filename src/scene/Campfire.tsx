@@ -22,7 +22,7 @@ export interface SceneCharacter {
    * someone is doing, a mark says they are finished, and a player can be both
    * at once. Never carries what they said.
    */
-  mark?: 'sealed' | 'voted' | null;
+  mark?: 'sealed' | 'voted' | 'waiting' | null;
   /** The round is still waiting on them. Drawn dimmer. */
   dim?: boolean;
   /**
@@ -263,7 +263,10 @@ export function CampfireScene({
       for (const { c, seat } of order) {
         if (c.mark) {
           const drift = c.side == null ? 0 : (c.side === 0 ? -1 : 1) * width * 0.09;
-          drawMark(ctx, seat.x + drift, seat.y, seat.scale * s, c.mark, th, headTop(th, c.look));
+          drawMark(
+            ctx, seat.x + drift, seat.y, seat.scale * s, c.mark, th,
+            headTop(th, c.look), t, reduceMotion,
+          );
         }
       }
 

@@ -551,14 +551,10 @@ function PhaseProgress({ snapshot }: { snapshot: GameSnapshot }) {
           </li>
         ))}
       </ol>
-      {waiting && (
-        <p className="muted small">
-          {waiting.count}
-          {waiting.who.length > 0 && waiting.who.length <= 4 && (
-            <> · still waiting on {waiting.who.join(', ')}</>
-          )}
-        </p>
-      )}
+      {/* The names used to be listed here. The ring shows them now — a dotted
+          thought bubble over everybody still to act — which is read far faster
+          than a sentence. The count stays, because a host glances at it. */}
+      {waiting && <p className="muted small">{waiting.count}</p>}
     </div>
   );
 }

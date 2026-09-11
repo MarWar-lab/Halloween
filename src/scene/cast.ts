@@ -57,14 +57,24 @@ export function castFrom(
     // answered. It should only colour a player who is otherwise doing nothing.
     if (p.passSpent && (state === 'idle' || state === 'listening')) state = 'passed';
 
-    // A badge, not a pose. Poses say what someone is doing; this says they are
-    // done, and the two have to be sayable at the same time. It carries no
-    // hint of *what* they said.
+    // A badge, not a pose. Poses say what someone is doing; this says whether
+    // they are done, and the two have to be sayable at the same time. It
+    // carries no hint of *what* they said.
+    //
+    // Everyone gets one during a phase the room is waiting on, so the scene
+    // answers "who are we waiting for" without anybody reading a count.
+    const excused =
+      round?.phase === 'voting' &&
+      (round.turnPlayerId === p.id || round.opponentId === p.id);
     const mark: SceneCharacter['mark'] =
-      round?.phase === 'submitting' && submitted.has(p.id)
-        ? 'sealed'
-        : round?.phase === 'voting' && voted.has(p.id)
-          ? 'voted'
+      round?.phase === 'submitting'
+        ? submitted.has(p.id)
+          ? 'sealed'
+          : 'waiting'
+        : round?.phase === 'voting' && !excused
+          ? voted.has(p.id)
+            ? 'voted'
+            : 'waiting'
           : null;
 
     // Sealed until scoring, exactly like every other vote.

@@ -1072,16 +1072,46 @@ export function drawMark(
   x: number,
   y: number,
   scale: number,
-  mark: 'sealed' | 'voted',
+  mark: 'sealed' | 'voted' | 'waiting',
   theme: Theme,
   top: number,
+  t = 0,
+  reduceMotion = false,
 ) {
-  const cy = y - (top + 22) * scale;
-  const s = Math.max(0.7, scale);
+  const cy = y - (top + 20) * scale;
+  const s = Math.max(1.15, scale);
 
   ctx.save();
   ctx.translate(x, cy);
   ctx.scale(s, s);
+
+  // Still thinking: a small bubble of dots that fill in turn. This is the
+  // half that was missing — the scene could say who had finished but not who
+  // the room was waiting for, which is the thing a host actually looks for.
+  if (mark === 'waiting') {
+    ctx.beginPath();
+    ctx.roundRect(-15, -10, 30, 20, 9);
+    ctx.fillStyle = 'rgba(18,13,24,0.9)';
+    ctx.fill();
+    ctx.strokeStyle = `${theme.palette.edge}`;
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+    // The little tail, so it reads as a thought rather than a badge.
+    ctx.beginPath();
+    ctx.arc(-3, 10, 2.2, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(18,13,24,0.9)';
+    ctx.fill();
+
+    for (let i = 0; i < 3; i += 1) {
+      const lit = reduceMotion ? 0.6 : 0.28 + 0.72 * (0.5 + 0.5 * Math.sin(t * 3 - i * 0.9));
+      ctx.beginPath();
+      ctx.arc(-7 + i * 7, 0, 2.8, 0, Math.PI * 2);
+      ctx.fillStyle = `${theme.palette.muted}${Math.round(lit * 255).toString(16).padStart(2, '0')}`;
+      ctx.fill();
+    }
+    ctx.restore();
+    return;
+  }
 
   // A warm halo so it separates from the trees behind it.
   const glow = ctx.createRadialGradient(0, 0, 0, 0, 0, 16);
@@ -1100,7 +1130,7 @@ export function drawMark(
     ctx.stroke();
     // A wax blob, because a sealed answer is the whole point.
     ctx.beginPath();
-    ctx.arc(0, 0, 3, 0, Math.PI * 2);
+    ctx.arc(0, 0, 3.4, 0, Math.PI * 2);
     ctx.fillStyle = theme.palette.alert;
     ctx.fill();
   } else {

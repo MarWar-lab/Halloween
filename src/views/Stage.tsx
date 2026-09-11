@@ -144,7 +144,7 @@ function PhaseDetail({ snapshot }: { snapshot: GameSnapshot }) {
             ))}
           </ul>
         ) : (
-          <p className="stage-note">
+          <p className="sr-only" aria-live="polite">
             Name one of us. {snapshot.votedPlayerIds.length} of {eligible} in.
           </p>
         )}
@@ -176,7 +176,7 @@ function PhaseDetail({ snapshot }: { snapshot: GameSnapshot }) {
           ))}
         </div>
         {!scored && (
-          <p className="stage-note">
+          <p className="sr-only" aria-live="polite">
             Tap one. {snapshot.votedPlayerIds.length} of {eligible} in.
           </p>
         )}
@@ -194,7 +194,7 @@ function PhaseDetail({ snapshot }: { snapshot: GameSnapshot }) {
       // from who has acted, which is the only part of a sealed answer the
       // server will tell anyone.
       return (
-        <p className="stage-note">
+        <p className="sr-only" aria-live="polite">
           Answers are sealed. {answered} of {eligible} in.
         </p>
       );
@@ -209,8 +209,8 @@ function PhaseDetail({ snapshot }: { snapshot: GameSnapshot }) {
       return (
         <>
           {snapshot.submissions.length > 0 && <AnswerRows snapshot={snapshot} />}
-          <p className="stage-note">
-            Vote on your own screen. {snapshot.votedPlayerIds.length} of {voters} in.
+          <p className="sr-only" aria-live="polite">
+            Voting. {snapshot.votedPlayerIds.length} of {voters} in.
           </p>
         </>
       );
