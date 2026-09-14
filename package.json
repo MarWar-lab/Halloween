@@ -11,7 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "verify:live": "python3 scripts/verify-live.py",
-    "check:sql": "node scripts/check-migrations.mjs"
+    "check:sql": "node scripts/check-migrations.mjs",
+    "check:bundle": "node scripts/check-bundle.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.116.0",
