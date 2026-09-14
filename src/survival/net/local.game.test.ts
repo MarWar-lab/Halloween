@@ -161,7 +161,7 @@ describe('The Last Screen Standing, through the local backend', () => {
     expect(seenBy(backend, 'cara', gameId).votedPlayerIds).toHaveLength(0);
   });
 
-  it('gives a tribunal arrival all seven scores and a correct standing', async () => {
+  it('gives a tribunal arrival every real score and a correct standing', async () => {
     await playOut(backend, gameId);
     tab('hana');
     await backend.advance(gameId);
@@ -169,9 +169,9 @@ describe('The Last Screen Standing, through the local backend', () => {
     tab('lee');
     const joined = await backend.join(code, 'Lee');
     const snap = seenBy(backend, 'lee', gameId);
-    expect(snap.myScores).toHaveLength(7);
+    expect(snap.myScores).toHaveLength(SEALED.length);
     const lee = snap.standings!.find((s) => s.playerId === joined.playerId)!;
-    expect(lee.rounds).toBe(7);
+    expect(lee.rounds).toBe(SEALED.length);
     expect(lee.average).toBe(snap.standings!.find((s) => s.name === 'Hana')!.average);
   });
 

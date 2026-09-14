@@ -50,7 +50,7 @@ export function questionAt(idx: number): Question {
   return idx < 0 ? INTRO_QUESTIONS[INTRO_QUESTIONS.length + idx] : QUESTIONS[idx];
 }
 
-/** "Warm-up 1 of 2" while idx is negative, "Question 1 of 7" once it isn't. */
+/** "Warm-up 1 of 2" while idx is negative, "Question 1 of 9" once it isn't. */
 export function questionLabel(idx: number): string {
   return idx < 0
     ? `Warm-up ${INTRO_QUESTIONS.length + idx + 1} of ${INTRO_QUESTIONS.length}`
@@ -150,6 +150,18 @@ export const QUESTIONS: Question[] = [
     ],
   },
   {
+    title: 'The Drive',
+    setup:
+      'The neighbour is gone. You are on the road to the TWIN port, and the road is not cooperating — gridlock, improvised checkpoints, and a clock that is not on your side.',
+    choices: [
+      'Push through the gridlock on the shoulder',
+      'Abandon the car, go on foot through backstreets',
+      'Tuck in behind a military convoy and follow',
+      'Trade your fuel to a stranger for a guaranteed route',
+      'Wait it out in a parking garage',
+    ],
+  },
+  {
     title: 'The Checkpoint',
     setup:
       'The outer perimeter of the TWIN port. The military are scanning for bio-digital signatures, the line has stopped moving, and a riot is building at the back of it.',
@@ -184,6 +196,18 @@ export const QUESTIONS: Question[] = [
       'Nothing, and lock the door behind you',
       'The trauma kit, for the injured outside',
       'A solar battery bank and a smart radio',
+    ],
+  },
+  {
+    title: 'The Loading Dock',
+    setup:
+      'Cache in hand, the stairwell to the roof is on the far side of the loading dock — and the loading dock is where the building was first breached. It has not emptied out since.',
+    choices: [
+      'Sprint straight across the open dock floor',
+      'Hug the container stacks, one to the next',
+      'Climb over a stalled forklift, through a broken window',
+      'Drop a radio at the far end to draw them off',
+      'Grab a length of pipe and go loud',
     ],
   },
   {

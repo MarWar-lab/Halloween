@@ -151,11 +151,21 @@ its own RPCs, its own stylesheet. Nothing under `src/game/`, `src/net/`,
 `src/scene/` or `src/views/` is touched by it, and nothing it does can regress
 Campfire.
 
-Two zero-stakes warm-ups, then seven scripted questions, then a plea. Every
+Two zero-stakes warm-ups, then nine scripted questions, then a plea. Every
 question offers five moves; everyone taps one; every device opens the same
 full reveal — all five outcomes, each person's name against what they chose.
 No voting until the very last step: an open plea, followed by one vote for
 a winner.
+
+Scores compound, not average: your odds are the product of every real
+question's percentage, not their mean — see `survivalOddsOf` in
+`src/survival/types.ts`. Surviving seven or nine things back to back is the
+chance of all of them going your way at once, and that chance falls every
+time, which an arithmetic mean structurally cannot do. It also, quickly,
+gets very small — comparisons and tie-breaks use the unrounded figure
+(`survivalOddsPrecise` / `survival_odds_precise`) for exactly that reason,
+because several players routinely land on the same rounded "0.0%" without
+being tied at all.
 
 **Everyone plays from their own device — there is no separate shared screen.**
 `src/survival/views/Player.tsx` is the whole game: the scenario, the tap, the
@@ -169,10 +179,26 @@ almost certainly inside `Player.tsx` now — the `Board` component (tribunal +
 result), the reveal list, the lobby's big code display, the briefing and plea
 scenario text all moved there rather than disappearing.
 
-Four of the seven real questions carry a short looping video clip
+Four of the nine real questions carry a short looping video clip
 (`public/clips/*.mp4`, referenced by `Question.clip`) — decoration behind the
-reveal, never content in its own right; three questions and both warm-ups
-show nothing, deliberately, rather than force a mismatched clip onto them.
+reveal, never content in its own right; the other five questions and both
+warm-ups show nothing, deliberately, rather than force a mismatched clip
+onto them.
+
+**Inserting a real question mid-arc is a reseed, not a column widen.** The
+two warm-ups dodge that entirely by living at negative `question_idx` — no
+stakes, no `SEALED` row, nothing to renumber. A real question does need a
+`SEALED`/`survival_options` row, so slotting one into the middle (rather than
+appending it at the end) shifts every question after it. The pattern, used
+once already to add "The Drive" and "The Loading Dock": one migration that
+widens the `question_idx` CHECK constraints, bumps `survival_advance`'s upper
+bound and `survival_join`'s backfill loop, and reseeds `survival_options` in
+full — every `question_idx` from 0 to the new max gets an explicit row in
+that one seed statement, so nothing is left orphaned holding stale content at
+its old position. `src/survival/questions.ts` and `sealed.ts` are reordered
+to match by hand (or regenerated from the seed, which is how the last one was
+built) — `seal.test.ts` cross-checks the two against whichever migration file
+it currently points at, so update that path when a later one supersedes it.
 
 A private per-question recap (your choice and its percentage, question by
 question) opens once, locally, right before the plea composer — the first

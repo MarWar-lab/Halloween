@@ -76,7 +76,7 @@ console.log('\n=== production keeps the survival answer table off the client ===
 if (process.env.ALLOW_LOCAL_ONLY_BUILD !== '1') {
   const sealedSource = readFileSync(join(root, 'src/survival/sealed.ts'), 'utf8');
   const outcomes = [...sealedSource.matchAll(/outcome:\s*\n\s*'([^']+)'/g)].map((match) => match[1]);
-  check('all 35 sealed outcomes can be checked', outcomes.length === 35);
+  check('all 45 sealed outcomes can be checked', outcomes.length === 45);
   check('no sealed outcomes are shipped in JavaScript', outcomes.every((outcome) => !code.includes(outcome)));
   check('no local survival simulator is shipped', !code.includes('survival:game:'));
 }

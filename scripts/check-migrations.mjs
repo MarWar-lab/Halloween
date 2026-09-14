@@ -445,7 +445,7 @@ check('with the worst move, flagged as not their doing',
   leeRows[0]?.option_index === 0 && leeRows[0]?.auto_assigned === true);
 
 console.log('\n--- the rest of the night, nobody answering ---');
-for (let q = 1; q <= 6; q += 1) {
+for (let q = 1; q <= 8; q += 1) {
   await be(SHOST);
   await db.query(`select survival_advance($1)`, [sgame.id]);
   await db.query(`select survival_reveal($1)`, [sgame.id]);
@@ -461,7 +461,7 @@ const gaps = (await db.query(
      left join survival_answers a on a.game_id = p.game_id and a.player_id = p.id
     where p.game_id = $1 group by p.name order by p.name`, [sgame.id])).rows;
 check('every player has an answer for every question',
-  gaps.length === 4 && gaps.every((r) => r.n === 7),
+  gaps.length === 4 && gaps.every((r) => r.n === 9),
   gaps.map((r) => `${r.name}:${r.n}`).join(' '));
 
 console.log('\n--- the plea and the tribunal ---');

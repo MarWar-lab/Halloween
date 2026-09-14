@@ -20,8 +20,11 @@ import { OUTCOME_MAX, SEALED, worstOption } from './sealed';
 import { INTRO_QUESTIONS, QUESTIONS } from './questions';
 
 const root = join(import.meta.dirname, '../..');
+// The base migration seeded seven questions; a later one reseeds all nine at
+// their current positions (see its own header for the old→new mapping). This
+// is the authority now — read the latest seed, not the first one.
 const migration = readFileSync(
-  join(root, 'supabase/migrations/20260912090000_survival.sql'),
+  join(root, 'supabase/migrations/20260915140000_survival_arc.sql'),
   'utf8',
 );
 
@@ -64,8 +67,10 @@ describe('the sealed values', () => {
 
   it('parses every seeded row out of the migration', () => {
     // If this fails the regex has stopped matching the file, and every other
-    // test below is comparing against nothing and passing for free.
-    expect(rows).toHaveLength(7 * 5);
+    // test below is comparing against nothing and passing for free. Against
+    // QUESTIONS.length rather than a literal, so this stays true the next
+    // time a question is inserted rather than silently passing for free.
+    expect(rows).toHaveLength(QUESTIONS.length * 5);
   });
 
   it('matches src/survival/sealed.ts exactly', () => {

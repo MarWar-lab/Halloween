@@ -73,6 +73,33 @@ export const SEALED: SealedOption[][] = [
   ],
   [
     {
+      survivalPct: 55,
+      outcome:
+        'You clip two mirrors and a road sign, but you are through before the street fully seizes shut.',
+    },
+    {
+      survivalPct: 65,
+      outcome:
+        'Slower, but the panic is all on the main road. You lose no distance to anything that matters.',
+    },
+    {
+      survivalPct: 70,
+      outcome:
+        'The convoy clears everything ahead of it. You only have to keep up without anyone noticing you are there.',
+    },
+    {
+      survivalPct: 50,
+      outcome:
+        'The stranger takes the fuel happily and points you down a road that turns out to be a dead end.',
+    },
+    {
+      survivalPct: 45,
+      outcome:
+        'The roads never really clear. You lose two hours you did not have, and everyone else is already ahead of you in line.',
+    },
+  ],
+  [
+    {
       survivalPct: 60,
       outcome:
         'The medical lockdown works and you slip out the side gate. The turrets almost track you. You are officially a villain.',
@@ -150,6 +177,33 @@ export const SEALED: SealedOption[][] = [
       survivalPct: 55,
       outcome:
         'Information is comforting. A radio has never once stopped a set of teeth from closing on a forearm.',
+    },
+  ],
+  [
+    {
+      survivalPct: 40,
+      outcome:
+        'Fast, and exposed the entire way. Something gets a hand on your jacket; you shed it and keep moving.',
+    },
+    {
+      survivalPct: 55,
+      outcome:
+        'Slower, but you are never in the open for more than a few seconds at a time.',
+    },
+    {
+      survivalPct: 45,
+      outcome:
+        'The glass takes a piece out of your forearm on the way through. You are through, and bleeding.',
+    },
+    {
+      survivalPct: 60,
+      outcome:
+        'It works better than it has any right to. You walk straight past what used to be a crowd.',
+    },
+    {
+      survivalPct: 30,
+      outcome:
+        'You make it, technically. You will feel every part of this for days, if there turn out to be days left to feel it in.',
     },
   ],
   [

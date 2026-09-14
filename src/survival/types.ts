@@ -2,15 +2,15 @@
  * The Last Screen Standing — its own vocabulary.
  *
  * Deliberately shares nothing with the Campfire engine next door. That game is
- * about cards, heat and anonymous answers; this one is about eight scripted
- * questions and one number you are not allowed to tell anybody.
+ * about cards, heat and anonymous answers; this one is about a run of
+ * scripted questions and one number you are not allowed to tell anybody.
  */
 
 /** Where the night has got to. Mirrors survival_games.phase exactly. */
 export type Phase = 'lobby' | 'briefing' | 'running' | 'plea' | 'tribunal' | 'result';
 
 /** How many questions are answered by choosing a move. The plea is separate. */
-export const CHOICE_QUESTIONS = 7;
+export const CHOICE_QUESTIONS = 9;
 
 export interface Game {
   id: string;
