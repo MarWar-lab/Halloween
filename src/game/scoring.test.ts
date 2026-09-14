@@ -6,6 +6,7 @@ import {
   scoreDuel,
   scoreGuessWho,
   scoreSolo,
+  scoreSplit,
   validVotes,
 } from './scoring';
 import type { Submission, Vote } from './types';
@@ -148,5 +149,45 @@ describe('applyResults', () => {
     const next = applyResults(totals, { points: { a: 2, b: 1 } });
     expect(next).toEqual({ a: 5, b: 1 });
     expect(totals).toEqual({ a: 3 });
+  });
+});
+
+describe('scoreSplit explains itself', () => {
+  const vote = (voterId: string, optionIndex: 0 | 1) =>
+    ({ id: `v-${voterId}`, roundId: 'r', voterId, optionIndex }) as never;
+
+  it('pays the minority two extra and says so', () => {
+    const out = scoreSplit([vote('a', 0), vote('b', 1), vote('c', 1)]);
+    expect(out.points).toEqual({ a: 3, b: 1, c: 1 });
+    expect(out.notes!.a).toBe('with the few');
+    expect(out.notes!.b).toBe('with the many');
+  });
+
+  /**
+   * A 6-0 split used to pay a flat 1 with no note at all, which on screen was
+   * indistinguishable from losing — while a 3-3 split on the same card pays
+   * everyone 3. The points are deliberately unchanged; the reason is not.
+   */
+  it('tells a unanimous room that it was unanimous', () => {
+    const out = scoreSplit([vote('a', 1), vote('b', 1), vote('c', 1)]);
+    expect(out.points).toEqual({ a: 1, b: 1, c: 1 });
+    expect(out.notes!.a).toBe('the whole room agreed');
+  });
+
+  it('pays everyone on a dead heat', () => {
+    const out = scoreSplit([vote('a', 0), vote('b', 1)]);
+    expect(out.points).toEqual({ a: 3, b: 3 });
+    expect(out.notes!.a).toBe('split down the middle');
+  });
+
+  it('leaves nobody unexplained', () => {
+    for (const votes of [
+      [vote('a', 0), vote('b', 1), vote('c', 1)],
+      [vote('a', 1), vote('b', 1)],
+      [vote('a', 0), vote('b', 1)],
+    ]) {
+      const out = scoreSplit(votes);
+      for (const v of votes) expect(out.notes![(v as { voterId: string }).voterId]).toBeTruthy();
+    }
   });
 });

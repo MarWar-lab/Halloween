@@ -203,10 +203,19 @@ export function scoreSplit(votes: Vote[]): RoundResults {
 
   const drawn = tally[0] === tally[1];
   const smaller = tally[0] < tally[1] ? 0 : 1;
+  // Unanimity is its own outcome. When everybody picks the same side there is
+  // no smaller half to be on, so nobody takes the bonus — which is right, but
+  // on screen it was indistinguishable from having simply lost: a flat +1 and
+  // no reason given, while a dead heat on the same card pays everyone 3. The
+  // points are unchanged; the difference is now stated rather than left for
+  // the room to work out.
+  const unanimous = tally[0] === 0 || tally[1] === 0;
   for (const v of counted) {
     if (drawn || v.optionIndex === smaller) {
       points[v.voterId] += 2;
       notes[v.voterId] = drawn ? 'split down the middle' : 'with the few';
+    } else {
+      notes[v.voterId] = unanimous ? 'the whole room agreed' : 'with the many';
     }
   }
   return { points, notes };

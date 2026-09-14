@@ -11,6 +11,7 @@ import type { Campfire } from '../state/useCampfire';
 import { CardPanel, Countdown, HowToPlay, Leaderboard, Progress, cardFor, nameOf } from './shared';
 import { choicesFor, eligibleVoters, myBallot } from '../game/ballot';
 import { roomProgress } from '../game/waiting';
+import { ANSWER_MAX } from '../game/types';
 
 const PHASE_LABEL: Record<string, string> = {
   lobby: 'Lobby',
@@ -292,8 +293,13 @@ export function Host({ campfire }: { campfire: Campfire }) {
           </p>
 
           {!roundOver ? (
-            <button className="btn btn-primary btn-hero" disabled={busy} onClick={nextStep}>
-              {nextStepLabel(round!.phase, round!.mechanic)}
+            <button
+              className="btn btn-primary btn-hero"
+              data-early={outstanding(snap) > 0 ? 'true' : undefined}
+              disabled={busy}
+              onClick={nextStep}
+            >
+              {nextStepLabel(round!.phase, round!.mechanic, outstanding(snap))}
             </button>
           ) : dealsCards ? (
             <button className="btn btn-primary btn-hero" disabled={busy} onClick={dealCard}>
@@ -442,18 +448,33 @@ function AtmospherePanel({ snapshot, backend }: { snapshot: GameSnapshot; backen
   );
 }
 
-function nextStepLabel(phase: string, mechanic: string): string {
+/**
+ * The label says what the press will actually do.
+ *
+ * "Score it" sat there looking like the obvious next move while five people
+ * still had a vote to cast — and pressing it ended the round under their
+ * fingers, with their screens jumping to "Round over. No points that round."
+ * They were never told they had been cut off, and the host was never told they
+ * were cutting anyone off. The sentence above the button said "Waiting on 5
+ * votes" the whole time; a sentence is easy to read past when the button
+ * beside it sounds finished.
+ */
+function nextStepLabel(phase: string, mechanic: string, waiting = 0): string {
+  const early = waiting > 0;
+  const people = `${waiting} ${waiting === 1 ? 'person' : 'people'}`;
   switch (phase) {
     case 'choosing':
       return 'Start their clock';
     case 'submitting':
-      return 'Close answers & reveal';
+      return early ? `Close without ${people}` : 'Close answers & reveal';
     case 'revealing':
       return 'Open voting';
     case 'performing':
       return mechanic === 'duel' ? 'Both done — open voting' : 'Open voting';
     case 'voting':
-      return 'Score it';
+      return early
+        ? `Score without ${waiting} ${waiting === 1 ? 'vote' : 'votes'}`
+        : 'Score it';
     default:
       return 'Next step';
   }
@@ -643,7 +664,7 @@ function PlayPanel({
               <div className="proxy-answer">
                 <textarea
                   rows={2}
-                  maxLength={600}
+                  maxLength={ANSWER_MAX}
                   value={drafts[draftKey(player.id)] ?? ''}
                   placeholder="Type what they say out loud"
                   onChange={(e) =>
@@ -653,6 +674,9 @@ function PlayPanel({
                 <button className="btn btn-sm" onClick={() => void submit(player.id)}>
                   Seal
                 </button>
+                <span className="answer-count">
+                  {ANSWER_MAX - (drafts[draftKey(player.id)] ?? '').length}
+                </span>
               </div>
             ) : isUp ? (
               <span className="muted small">Being scored — no vote.</span>
@@ -712,12 +736,17 @@ function PlayPanel({
               <span className="muted small">Reveal the answers first.</span>
             ) : round.mechanic === 'guesswho' ? (
               <ul className="guess-list">
+                {/* Own answer kept in place — see the note in Player.tsx.
+                    A gap in the numbering reads as a missing answer, and the
+                    number the host reads aloud must match every screen. */}
                 {choices
-                  .filter((c) => !c.mine)
                   .map((c) => (
-                    <li key={c.submission.id}>
+                    <li key={c.submission.id} className={c.mine ? 'guess-mine' : undefined}>
                       <span className="reveal-num">{c.number}</span>
                       <span className="pick-text">{c.submission.text}</span>
+                      {c.mine ? (
+                        <span className="pick-flag">theirs</span>
+                      ) : (
                       <select
                         value={ballot.guesses[c.submission.id] ?? ''}
                         onChange={(e) =>
@@ -739,6 +768,7 @@ function PlayPanel({
                             </option>
                           ))}
                       </select>
+                      )}
                     </li>
                   ))}
               </ul>

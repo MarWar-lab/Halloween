@@ -191,7 +191,11 @@ export function Progress({
           </em>
         </span>
         <span className="progress-cards">
-          {pace.cardsPlayed} of ~{pace.cardsPlanned} cards
+          {/* No tilde. In the mono strip at 11px it reads as a minus sign —
+              "4 OF -13 CARDS" — which two testers reported and I could see
+              myself in a screenshot. The bar above already says the number is
+              a plan rather than a promise. */}
+          {pace.cardsPlayed} of {pace.cardsPlanned} cards
         </span>
         <span className="progress-time" title={`Planned: about ${pace.minutesTarget} minutes`}>
           {pace.minutesElapsed}/{pace.minutesTarget} min

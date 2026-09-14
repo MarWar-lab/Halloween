@@ -197,3 +197,14 @@ export interface RoundResults {
   /** Free-form notes the Stage can show ("fooled 6 people"). */
   notes?: Record<string, string>;
 }
+
+/**
+ * How long a written answer may be.
+ *
+ * Short answers read better at the fire and out loud, and a long one takes the
+ * card over: one tester wrote ~460 characters and it filled the shared screen
+ * on its own. Enforced in the two composers, not in the database — the column
+ * allows 600 and narrowing a constraint would reject rows already written.
+ * 140 is the cap people actually type against; 600 stays the outer bound.
+ */
+export const ANSWER_MAX = 140;

@@ -9,6 +9,7 @@ import type { VoteInput } from '../net';
 import { Countdown, HowToPlay, Leaderboard, Progress, ReactionBar, cardFor } from './shared';
 import { Glyph } from '../ui/Glyph';
 import { roomProgress } from '../game/waiting';
+import { ANSWER_MAX } from '../game/types';
 
 /**
  * The player's own device. Phone-first, and built on one rule: the screen
@@ -157,12 +158,15 @@ export function Player({ campfire }: { campfire: Campfire }) {
               <textarea
                 rows={4}
                 value={draft}
-                maxLength={600}
+                maxLength={ANSWER_MAX}
                 onChange={(e) => setDraft(e.target.value)}
                 placeholder="Nobody sees this until the reveal."
                 autoFocus
               />
             </label>
+            <p className={`answer-count ${draft.length > ANSWER_MAX - 25 ? 'tight' : ''}`}>
+              {ANSWER_MAX - draft.length} left
+            </p>
             <button
               className="btn btn-primary btn-block"
               disabled={!draft.trim()}
@@ -273,10 +277,18 @@ export function Player({ campfire }: { campfire: Campfire }) {
 
         {turn.task.kind === 'guess' && (
           <ul className="guess-list">
-            {choicesFor(snap.submissions, myId).filter((c) => !c.mine).map((c) => (
-              <li key={c.submission.id}>
+            {/* Your own answer stays in the list, in its own place.
+                Filtering it out left a hole in the numbering — 1, 2, 3, 5, 6 —
+                which reads as an answer that failed to load, and breaks the
+                one rule that matters here: the number the host reads aloud has
+                to be the number on your screen. It is simply not guessable. */}
+            {choicesFor(snap.submissions, myId).map((c) => (
+              <li key={c.submission.id} className={c.mine ? 'guess-mine' : undefined}>
                 <span className="reveal-num">{c.number}</span>
                 <span className="pick-text">{c.submission.text}</span>
+                {c.mine ? (
+                  <span className="guess-yours">Yours</span>
+                ) : (
                 <select
                   value={ballot.guesses[c.submission.id] ?? ''}
                   onChange={(e) =>
@@ -295,6 +307,7 @@ export function Player({ campfire }: { campfire: Campfire }) {
                       </option>
                     ))}
                 </select>
+                )}
               </li>
             ))}
           </ul>
@@ -331,6 +344,21 @@ export function Player({ campfire }: { campfire: Campfire }) {
             </span>
             <span>Ends this card. Costs you nothing.</span>
           </button>
+        )}
+
+        {/* You hold one of these all night, and until this line existed you
+            only found out when it was already your turn to perform. A tester
+            played eleven cards without ever being offered one, because the
+            Pass is only offered to whoever is on the spot — correct, but it
+            means the thing that makes the game safe for the quiet half of the
+            room was invisible to most of it. Shown, not offered: it still
+            cannot be spent until a card asks something of you. */}
+        {!turn.canPass && me && !me.passSpent && (
+          <p className="pass-held">
+            <Glyph name="cape" size={13} />
+            You still hold your {theme.vocab.pass} — one all night, and it costs
+            nothing to use.
+          </p>
         )}
 
         <div className="player-drawers">
