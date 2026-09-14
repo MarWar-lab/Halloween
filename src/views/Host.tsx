@@ -577,8 +577,26 @@ function PlayPanel({
 
   const onBehalfOf = (playerId: string) => (playerId === hostPlayerId ? undefined : playerId);
 
+  /**
+   * Drafts are keyed by round as well as by player, so a new card starts with
+   * an empty box.
+   *
+   * Keyed by player alone, last round's answer was still sitting in the
+   * textarea when the next card was dealt. Clicking in put the caret at the
+   * end, so typing appended: one seal stored "Fourteen. A neighbour handed me
+   * a toothbrush and I took it personally.The Mummy. Dug up, unwrapped, put in
+   * a glass case…" — two rounds glued together. The host types for every
+   * player without a device, so each of them would have dragged their previous
+   * answer into every card for the rest of the night.
+   *
+   * Done with a key rather than an effect on purpose: the early return above
+   * sits between this and the useState, and a hook below an early return is
+   * how the host console got a white screen once already.
+   */
+  const draftKey = (playerId: string) => `${round.id}:${playerId}`;
+
   const submit = async (playerId: string) => {
-    const text = (drafts[playerId] ?? '').trim();
+    const text = (drafts[draftKey(playerId)] ?? '').trim();
     if (!text) return;
     try {
       await backend.submitAnswer(round.id, text, onBehalfOf(playerId));
@@ -626,9 +644,11 @@ function PlayPanel({
                 <textarea
                   rows={2}
                   maxLength={600}
-                  value={drafts[player.id] ?? ''}
+                  value={drafts[draftKey(player.id)] ?? ''}
                   placeholder="Type what they say out loud"
-                  onChange={(e) => setDrafts((d) => ({ ...d, [player.id]: e.target.value }))}
+                  onChange={(e) =>
+                    setDrafts((d) => ({ ...d, [draftKey(player.id)]: e.target.value }))
+                  }
                 />
                 <button className="btn btn-sm" onClick={() => void submit(player.id)}>
                   Seal
