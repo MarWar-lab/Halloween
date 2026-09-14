@@ -752,14 +752,16 @@ select { width: 100%; background: var(--night); color: var(--text);
    900px-tall laptop: they had to scroll to find out what to do next. It now
    sticks to the bottom of the viewport, so it is reachable at any height and
    whatever the card's length. */
+/* The bar is solid and the fade sits ABOVE it.
+   Putting the gradient on the bar itself, however short, always leaves a band
+   the bar's own first line of text lives in — so the card's prompt and
+   "That is the night. Put the awards on the shared screen." rendered on top of
+   one another, both illegible. Nothing can show through an opaque bar. */
 .host-next { position: sticky; bottom: 0; z-index: 3;
-  /* Opaque within 18px, not 28% of its own height.
-     A long fade left most of the bar see-through, so whatever scrolled beneath
-     it showed straight through the button's own label — the card's line and
-     "Deal the next card when the room is ready." rendered on top of each other,
-     both illegible. The feather is now just enough to soften the edge. */
-  background: linear-gradient(to bottom, rgba(0, 0, 0, 0) 0, var(--night) 18px);
-  padding-top: 6px; padding-bottom: 10px; }
+  background: var(--night); padding-top: 10px; padding-bottom: 10px; }
+.host-next::before { content: ''; position: absolute; left: 0; right: 0; bottom: 100%;
+  height: 28px; pointer-events: none;
+  background: linear-gradient(to bottom, rgba(0, 0, 0, 0), var(--night)); }
 
 /* And while a round is live the scene steps back — the host is working, not
    admiring the graveyard. It is still moving, just smaller. */
