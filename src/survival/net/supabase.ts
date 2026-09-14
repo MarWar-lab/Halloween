@@ -117,9 +117,9 @@ export class SupabaseSurvivalBackend implements SurvivalBackend {
     const { data, error } = await this.client.rpc('survival_create', { p_name: name });
     if (error || !data) fail('Could not open a room.', error?.message);
     const game = rowToGame(data as GameRow);
-    const { data: seat } = await this.client.rpc('survival_resume', { p_game: game.id });
-    const row = Array.isArray(seat) ? seat[0] : seat;
-    return { gameId: game.id, code: game.code, playerId: (row?.player_id as string) ?? '' };
+    const { playerId } = await this.resume(game.id);
+    if (!playerId) fail('The room opened, but your seat could not be restored. Rejoin using the room code.', game.code);
+    return { gameId: game.id, code: game.code, playerId };
   }
 
   async join(code: string, name: string) {
@@ -135,7 +135,8 @@ export class SupabaseSurvivalBackend implements SurvivalBackend {
 
   async resume(gameId: string) {
     await ensureSession();
-    const { data } = await this.client.rpc('survival_resume', { p_game: gameId });
+    const { data, error } = await this.client.rpc('survival_resume', { p_game: gameId });
+    if (error) fail('Could not restore your seat.', error.message);
     const row = Array.isArray(data) ? data[0] : data;
     return {
       playerId: (row?.player_id as string | null) ?? null,
@@ -145,21 +146,21 @@ export class SupabaseSurvivalBackend implements SurvivalBackend {
 
   async resolveCode(code: string) {
     await ensureSession();
-    const { data } = await this.client.rpc('survival_resolve_code', {
+    const { data, error } = await this.client.rpc('survival_resolve_code', {
       p_code: code.trim().toUpperCase(),
     });
+    if (error) fail('Could not find that room.', error.message);
     return (data as string | null) ?? null;
   }
 
-  private async fetchSnapshot(gameId: string): Promise<Snapshot | null> {
-    const { data: gameRow } = await this.client
+  private async fetchSnapshot(gameId: string, seatId: string | null): Promise<Snapshot | null> {
+    const { data: gameRow, error: gameError } = await this.client
       .from('survival_games').select('*').eq('id', gameId).maybeSingle();
-    if (!gameRow) return null;
+    if (gameError) fail('Could not refresh the room.', gameError.message);
+    if (!gameRow) fail('This room is no longer available. Leave to join another room.');
     const game = rowToGame(gameRow as GameRow);
 
-    const [{ data: playerRows }, { data: answerRows }, { data: scoreRows },
-           { data: pleaRows }, { data: voteRows }, { data: progressRows }] =
-      await Promise.all([
+    const responses = await Promise.all([
         this.client.from('survival_players').select('*').eq('game_id', gameId).order('joined_at'),
         this.client.from('survival_answers').select('*').eq('game_id', gameId),
         this.client.from('survival_scores').select('*').eq('game_id', gameId),
@@ -167,6 +168,12 @@ export class SupabaseSurvivalBackend implements SurvivalBackend {
         this.client.from('survival_votes').select('*').eq('game_id', gameId),
         this.client.rpc('survival_progress', { p_game: gameId }),
       ]);
+
+    for (const response of responses) {
+      if (response.error) fail('Could not refresh the room.', response.error.message);
+    }
+    const [{ data: playerRows }, { data: answerRows }, { data: scoreRows },
+      { data: pleaRows }, { data: voteRows }, { data: progressRows }] = responses;
 
     // Everything below has already been filtered by row-level security. The
     // client is not choosing what to hide — it could not see the rest to hide
@@ -183,16 +190,17 @@ export class SupabaseSurvivalBackend implements SurvivalBackend {
 
     const myScores: MyScore[] = (scoreRows ?? [])
       .map((r) => ({ questionIdx: r.question_idx, survivalPct: r.survival_pct, playerId: r.player_id }))
-      .filter((s) => s.playerId === this.seatId)
+      .filter((s) => s.playerId === seatId)
       .map(({ questionIdx, survivalPct }) => ({ questionIdx, survivalPct }))
       .sort((a, b) => a.questionIdx - b.questionIdx);
 
     let reveal: RevealRow[] | null = null;
     if (game.phase === 'running' && game.revealed) {
-      const { data } = await this.client.rpc('survival_reveal_data', {
+      const { data, error } = await this.client.rpc('survival_reveal_data', {
         p_game: gameId,
         p_idx: game.questionIdx,
       });
+      if (error) fail('Could not load the outcomes.', error.message);
       reveal = (data ?? []).map((r: { option_index: number; label: string; outcome: string; takers: number }) => ({
         optionIndex: r.option_index,
         label: r.label,
@@ -206,13 +214,15 @@ export class SupabaseSurvivalBackend implements SurvivalBackend {
     let standings: Standing[] | null = null;
     let winner: Winner[] | null = null;
     if (game.phase === 'tribunal' || game.phase === 'result') {
-      const { data } = await this.client.rpc('survival_standings', { p_game: gameId });
+      const { data, error } = await this.client.rpc('survival_standings', { p_game: gameId });
+      if (error) fail('Could not load the standings.', error.message);
       standings = (data ?? []).map((r: { player_id: string; name: string; rounds: number; average: number }) => ({
         playerId: r.player_id, name: r.name, rounds: r.rounds, average: Number(r.average),
       }));
     }
     if (game.phase === 'result') {
-      const { data } = await this.client.rpc('survival_winner', { p_game: gameId });
+      const { data, error } = await this.client.rpc('survival_winner', { p_game: gameId });
+      if (error) fail('Could not load the winner.', error.message);
       winner = (data ?? []).map((r: { player_id: string; name: string; votes: number; average: number }) => ({
         playerId: r.player_id, name: r.name, votes: r.votes, average: Number(r.average),
       }));
@@ -236,25 +246,49 @@ export class SupabaseSurvivalBackend implements SurvivalBackend {
     };
   }
 
-  /** Which seat this browser holds, so its own score rows can be told apart. */
-  private seatId: string | null = null;
+  private refreshers = new Set<() => void>();
 
-  subscribe(gameId: string, onChange: (snapshot: Snapshot) => void) {
+  subscribe(gameId: string, onChange: (snapshot: Snapshot) => void,
+    onError?: (message: string | null) => void) {
     let stopped = false;
     let waiting = false;
+    let seatId: string | null = null;
+    let resolved = false;
+    let inFlight = false;
+    let pending = false;
+    let hadError = false;
 
+    // Realtime, polling and local actions share one queue. An older response
+    // must never overwrite a newer phase or a just-submitted choice.
     const push = async () => {
       if (stopped) return;
-      if (!this.seatId) this.seatId = (await this.resume(gameId)).playerId;
-      const snap = await this.fetchSnapshot(gameId);
-      if (!snap || stopped) return;
-      // While the room is choosing, the host is watching a counter to decide
-      // when to open the question. Lag there is a host wondering if someone is
-      // stuck; everywhere else the only changes come from the host and those
-      // already arrive over realtime.
-      waiting = snap.game.phase === 'running' && !snap.game.revealed;
-      onChange(snap);
+      if (inFlight) { pending = true; return; }
+      inFlight = true;
+      try {
+        do {
+          pending = false;
+          if (!resolved) {
+            seatId = (await this.resume(gameId)).playerId;
+            resolved = true;
+          }
+          if (stopped) return;
+          const snap = await this.fetchSnapshot(gameId, seatId);
+          if (!snap || stopped) return;
+          waiting = (snap.game.phase === 'running' && !snap.game.revealed)
+            || snap.game.phase === 'plea' || snap.game.phase === 'tribunal';
+          onChange(snap);
+          if (hadError) { onError?.(null); hadError = false; }
+        } while (pending && !stopped);
+      } catch (error) {
+        if (!stopped) {
+          hadError = true;
+          onError?.(`${error instanceof Error ? error.message : String(error)} Retrying…`);
+        }
+      } finally {
+        inFlight = false;
+      }
     };
+    this.refreshers.add(push);
 
     const channel = this.client
       .channel(`survival:${gameId}`)
@@ -276,6 +310,7 @@ export class SupabaseSurvivalBackend implements SurvivalBackend {
 
     return () => {
       stopped = true;
+      this.refreshers.delete(push);
       window.clearTimeout(timer);
       this.client.removeChannel(channel);
     };
@@ -284,6 +319,7 @@ export class SupabaseSurvivalBackend implements SurvivalBackend {
   private async call(fn: string, args: Record<string, unknown>, whenItFails: string) {
     const { error } = await this.client.rpc(fn, args);
     if (error) fail(whenItFails, error.message);
+    for (const refresh of this.refreshers) refresh();
   }
 
   reveal = (gameId: string) =>

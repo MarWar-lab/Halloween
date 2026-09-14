@@ -22,6 +22,39 @@ export interface Question {
    * hint is the only thing the seal exists to withhold.
    */
   choices: [string, string, string, string, string];
+  /**
+   * Warm-up questions only: a line of flavour per choice, read at the reveal.
+   * There is no percentage attached and nothing here is a secret — a warm-up
+   * has nothing for the seal to protect, so its "outcome" lives in the open,
+   * right next to the choice it belongs to, rather than behind the RPC that
+   * guards a real question's `SEALED` entry.
+   */
+  outcomes?: [string, string, string, string, string];
+  /**
+   * A public asset path, e.g. '/clips/checkpoint.mp4'. A video is not a
+   * secret, so — unlike everything in sealed.ts — this lives right here next
+   * to the question it belongs to. Only four of nine questions have one:
+   * forcing a mismatched clip onto a question with no matching footage would
+   * be worse than showing nothing.
+   */
+  clip?: string;
+}
+
+/**
+ * Resolve whatever `question_idx` the game is currently on to the question it
+ * names. The index can be negative (a warm-up, counting back from -1) or
+ * 0..QUESTIONS.length-1 (a real question) — this is the one place that sign
+ * is handled, so Screen.tsx and Player.tsx never have to think about it.
+ */
+export function questionAt(idx: number): Question {
+  return idx < 0 ? INTRO_QUESTIONS[INTRO_QUESTIONS.length + idx] : QUESTIONS[idx];
+}
+
+/** "Warm-up 1 of 2" while idx is negative, "Question 1 of 7" once it isn't. */
+export function questionLabel(idx: number): string {
+  return idx < 0
+    ? `Warm-up ${INTRO_QUESTIONS.length + idx + 1} of ${INTRO_QUESTIONS.length}`
+    : `Question ${idx + 1} of ${QUESTIONS.length}`;
 }
 
 /** Read before the first question. */
@@ -43,6 +76,53 @@ export const FINAL_PLEA = {
   maxChars: 150,
 };
 
+/**
+ * Two icebreakers before the world ends in earnest. Zero stakes — no
+ * `SEALED` entry exists for either of these, and none ever will: see
+ * questions_idx's negative range in the migration for why that is a database
+ * guarantee, not just a habit.
+ */
+export const INTRO_QUESTIONS: Question[] = [
+  {
+    title: 'First Move',
+    setup:
+      "Every phone in the house screams at once. Before anything else — what's the first thing you actually grab?",
+    choices: [
+      'Your charger',
+      'The good snacks',
+      'A family photo',
+      'Your gaming console',
+      'An umbrella, held like a weapon',
+    ],
+    outcomes: [
+      'Priorities. The world can end; the battery cannot.',
+      "Correct answer. Nobody is surviving an apocalypse on an empty stomach.",
+      "Sentimental, and it's now taking up bag space you needed for water.",
+      'Bold. There is, in fact, no wifi at the end of the world.',
+      'It is, at minimum, a stick now.',
+    ],
+  },
+  {
+    title: 'The Group Chat',
+    setup:
+      "Your group chat has gone completely feral in the last four minutes. Be honest — which one are you?",
+    choices: [
+      'Posting memes about it',
+      'Already live-streaming',
+      'Panic-buying online',
+      'Asking if this affects the match on Saturday',
+      'Already left the chat',
+    ],
+    outcomes: [
+      'The apocalypse waits for your punchline.',
+      'Content is content.',
+      'Fourteen tins of chickpeas, no can opener.',
+      'It does. Everything does.',
+      'The healthiest person in this scenario, frankly.',
+    ],
+  },
+];
+
 export const QUESTIONS: Question[] = [
   {
     title: 'The Guilt Trip',
@@ -55,6 +135,7 @@ export const QUESTIONS: Question[] = [
       'Tell them to meet you halfway at the park',
       'Fly them a survival kit by drone',
     ],
+    clip: '/clips/guilt-trip.mp4',
   },
   {
     title: 'The Feuding Neighbour',
@@ -79,6 +160,7 @@ export const QUESTIONS: Question[] = [
       'Help the guard calm the crowd',
       'Crawl through the storm drain',
     ],
+    clip: '/clips/checkpoint.mp4',
   },
   {
     title: 'The Infiltration',
@@ -115,6 +197,7 @@ export const QUESTIONS: Question[] = [
       'Hold your phone light up for the group',
       'Climb outside the railing, over the drop',
     ],
+    clip: '/clips/dark-stairwell.mp4',
   },
   {
     title: 'The Roof Breach',
@@ -127,5 +210,6 @@ export const QUESTIONS: Question[] = [
       'Stand at the door and hold them off',
       'Jam the door\'s hydraulic gears',
     ],
+    clip: '/clips/roof-breach.mp4',
   },
 ];

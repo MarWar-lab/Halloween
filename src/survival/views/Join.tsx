@@ -11,14 +11,14 @@ import type { Survival } from '../state/useSurvival';
 import { OPENING } from '../questions';
 
 export function Join({ survival }: { survival: Survival }) {
-  const [mode, setMode] = useState<'join' | 'create'>(survival.codeFromUrl ? 'join' : 'join');
+  const [mode, setMode] = useState<'join' | 'create'>('join');
   const [code, setCode] = useState(survival.codeFromUrl);
   const [name, setName] = useState('');
 
   const ready = name.trim().length > 0 && (mode === 'create' || code.trim().length === 4);
 
   const go = () => {
-    if (!ready) return;
+    if (!ready || survival.busy) return;
     if (mode === 'create') void survival.create(name.trim());
     else void survival.join(code.trim(), name.trim());
   };
@@ -34,7 +34,7 @@ export function Join({ survival }: { survival: Survival }) {
         {OPENING}
       </p>
 
-      {survival.error && <p className="error">{survival.error}</p>}
+      {survival.error && <p className="error" role="alert">{survival.error}</p>}
 
       {mode === 'join' && (
         <label>
@@ -71,12 +71,12 @@ export function Join({ survival }: { survival: Survival }) {
         {survival.busy ? 'Connecting…' : mode === 'create' ? 'Open a server' : 'Join server'}
       </button>
 
-      <button className="link" onClick={() => setMode(mode === 'join' ? 'create' : 'join')}>
+      <button className="link" disabled={survival.busy} onClick={() => setMode(mode === 'join' ? 'create' : 'join')}>
         {mode === 'join' ? 'Or start a new game as host' : 'Or join a game with a code'}
       </button>
 
       {mode === 'join' && code.trim().length === 4 && (
-        <button className="link" onClick={() => void survival.openScreen(code.trim())}>
+        <button className="link" disabled={survival.busy} onClick={() => void survival.openScreen(code.trim())}>
           Open the shared screen for this room instead
         </button>
       )}

@@ -365,11 +365,31 @@ check('a player cannot ask which move is worst',
 check('a player cannot write an answer directly',
   !!(await refuses(`select survival_assign($1,$2,0,1,false)`, [sgame.id, pCara.id])));
 
-console.log('\n--- one question, played ---');
+console.log('\n--- two warm-ups, nobody answering, nothing at stake ---');
 await be(SHOST);
 await db.query(`select survival_advance($1)`, [sgame.id]); // briefing
-await db.query(`select survival_advance($1)`, [sgame.id]); // running
+await db.query(`select survival_advance($1)`, [sgame.id]); // running — question_idx = -2
 
+let started = (await db.query(`select question_idx from survival_games where id=$1`, [sgame.id])).rows[0];
+check('the night opens on the first warm-up', started.question_idx === -2, `${started.question_idx}`);
+
+await db.query(`select survival_reveal($1)`, [sgame.id]); // reveal warm-up 1, silence throughout
+check('a silent warm-up gets nobody auto-assigned',
+  (await db.query(`select * from survival_answers where game_id=$1 and question_idx=-2`, [sgame.id])).rows.length === 0);
+check('and never writes a percentage',
+  (await db.query(`select * from survival_scores where game_id=$1 and question_idx=-2`, [sgame.id])).rows.length === 0);
+
+await db.query(`select survival_advance($1)`, [sgame.id]); // → warm-up 2, question_idx = -1
+await db.query(`select survival_reveal($1)`, [sgame.id]);
+check('the second warm-up behaves the same way',
+  (await db.query(`select * from survival_answers where game_id=$1 and question_idx=-1`, [sgame.id])).rows.length === 0 &&
+  (await db.query(`select * from survival_scores where game_id=$1 and question_idx=-1`, [sgame.id])).rows.length === 0);
+
+await db.query(`select survival_advance($1)`, [sgame.id]); // → question_idx = 0, the real gauntlet begins
+started = (await db.query(`select question_idx, revealed from survival_games where id=$1`, [sgame.id])).rows[0];
+check('the gauntlet opens fresh, unrevealed', started.question_idx === 0 && started.revealed === false);
+
+console.log('\n--- one question, played ---');
 await be(CARA);
 // Option 2 on question 0 is 'block their number', the best move on the card.
 await db.query(`select survival_answer($1, 2)`, [sgame.id]);

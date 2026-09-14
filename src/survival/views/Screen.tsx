@@ -12,7 +12,8 @@
  */
 
 import { OPTION_LETTERS, type Snapshot } from '../types';
-import { FINAL_PLEA, OPENING, QUESTIONS } from '../questions';
+import { FINAL_PLEA, OPENING, questionAt, questionLabel } from '../questions';
+import { Clip } from './Clip';
 
 export function Screen({ snapshot }: { snapshot: Snapshot }) {
   const { game } = snapshot;
@@ -33,14 +34,14 @@ export function Screen({ snapshot }: { snapshot: Snapshot }) {
 
 function Header({ snapshot }: { snapshot: Snapshot }) {
   const { game } = snapshot;
-  const question = game.phase === 'running' ? QUESTIONS[game.questionIdx] : null;
+  const question = game.phase === 'running' ? questionAt(game.questionIdx) : null;
 
   return (
     <header>
       <p className="eyebrow">
         {game.phase === 'lobby' && 'Awaiting survivors'}
         {game.phase === 'briefing' && 'Emergency broadcast'}
-        {question && `Question ${game.questionIdx + 1} of ${QUESTIONS.length}`}
+        {question && questionLabel(game.questionIdx)}
         {game.phase === 'plea' && 'The final plea'}
         {game.phase === 'tribunal' && 'The tribunal'}
         {game.phase === 'result' && 'Extraction'}
@@ -68,7 +69,7 @@ const winnerLine = (snapshot: Snapshot): string => {
 function Lobby({ snapshot }: { snapshot: Snapshot }) {
   return (
     <div style={{ display: 'grid', gap: '1rem', alignContent: 'start' }}>
-      <p className="muted">Join at this address, then enter the code:</p>
+      <p className="muted">Join at <strong>{window.location.host}/survive</strong>, then enter the code:</p>
       <p className="code-badge">{snapshot.game.code}</p>
       <p className="muted" style={{ fontSize: '0.9rem' }}>
         Start when everyone is actually here — anyone who joins later is marked down
@@ -85,11 +86,12 @@ function Lobby({ snapshot }: { snapshot: Snapshot }) {
 
 function Question({ snapshot }: { snapshot: Snapshot }) {
   const { game, reveal, answers, players } = snapshot;
-  const question = QUESTIONS[game.questionIdx];
+  const question = questionAt(game.questionIdx);
 
   if (!game.revealed) {
     return (
       <div style={{ display: 'grid', gridTemplateRows: 'auto 1fr', gap: '1rem', height: '100%', minHeight: 0 }}>
+        {question.clip && <Clip src={question.clip} variant="backdrop" />}
         <p className="setup">{question.setup}</p>
         <div className="screen-moves">
           {question.choices.map((choice, i) => (
@@ -109,27 +111,44 @@ function Question({ snapshot }: { snapshot: Snapshot }) {
       .filter((a) => a.questionIdx === game.questionIdx && a.optionIndex === optionIndex)
       .map((a) => nameOf(a.playerId));
 
+  // A warm-up has no SEALED entry and nothing for the backend's
+  // survival_reveal_data to return, so its "reveal" is built straight from the
+  // public question data rather than from `snapshot.reveal` — the same shape,
+  // just a different source, so the row-rendering below never has to know
+  // which kind of question it is looking at.
+  const rows = game.questionIdx < 0
+    ? question.outcomes!.map((outcome, i) => ({
+        optionIndex: i,
+        label: question.choices[i],
+        outcome,
+        takers: tookIt(i).length,
+      }))
+    : (reveal ?? []);
+
   return (
-    <div className="screen-moves">
-      {(reveal ?? []).map((row, i) => (
-        <div
-          key={row.optionIndex}
-          className="screen-move reveal-row"
-          // A beat between each row, so the reveal lands one at a time without
-          // the host having to click five times.
-          style={{ animationDelay: `${i * 0.18}s` }}
-        >
-          <span className="letter">{OPTION_LETTERS[row.optionIndex]}</span>
-          <span style={{ minWidth: 0 }}>
-            <strong>{row.label}</strong>
-            <span className="outcome"> — {row.outcome}</span>
-            {row.takers > 0 && (
-              <span className="takers"> [{tookIt(row.optionIndex).join(', ')}]</span>
-            )}
-          </span>
-        </div>
-      ))}
-    </div>
+    <>
+      {question.clip && <Clip src={question.clip} variant="backdrop" />}
+      <div className="screen-moves">
+        {rows.map((row, i) => (
+          <div
+            key={row.optionIndex}
+            className="screen-move reveal-row"
+            // A beat between each row, so the reveal lands one at a time without
+            // the host having to click five times.
+            style={{ animationDelay: `${i * 0.18}s` }}
+          >
+            <span className="letter">{OPTION_LETTERS[row.optionIndex]}</span>
+            <span style={{ minWidth: 0 }}>
+              <strong>{row.label}</strong>
+              <span className="outcome"> — {row.outcome}</span>
+              {row.takers > 0 && (
+                <span className="takers"> [{tookIt(row.optionIndex).join(', ')}]</span>
+              )}
+            </span>
+          </div>
+        ))}
+      </div>
+    </>
   );
 }
 
@@ -173,8 +192,13 @@ function Footer({ snapshot }: { snapshot: Snapshot }) {
 
   // The single instruction that makes this game work. Without it people simply
   // compare numbers and the bluffing — which is the whole point — never starts.
+  // A warm-up has no percentage to hold back, so it gets a plainer line.
   if (game.phase === 'running' && game.revealed) {
-    return <p className="talk">Talk it out — and keep your own percentage to yourself.</p>;
+    return (
+      <p className="talk">
+        {game.questionIdx < 0 ? 'Talk it out.' : 'Talk it out — and keep your own percentage to yourself.'}
+      </p>
+    );
   }
 
   if (game.phase === 'running') return <Waiting ids={answeredPlayerIds} players={players} verb="chosen" />;

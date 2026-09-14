@@ -38,6 +38,11 @@ function requireSupabaseEnv(mode: string): Plugin {
 
 export default defineConfig(({ mode }) => ({
   plugins: [react(), requireSupabaseEnv(mode)],
+  define: {
+    'import.meta.env.VITE_LOCAL_ONLY_BUILD': JSON.stringify(
+      loadEnv(mode, process.cwd(), '').ALLOW_LOCAL_ONLY_BUILD === '1' ? '1' : '0',
+    ),
+  },
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts', 'src/**/*.test.tsx'],

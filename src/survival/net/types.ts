@@ -26,7 +26,7 @@ export interface SurvivalBackend {
   /** Room code → game id, for opening the shared screen in a second tab. */
   resolveCode(code: string): Promise<string | null>;
 
-  subscribe(gameId: string, onChange: (snapshot: Snapshot) => void): () => void;
+  subscribe(gameId: string, onChange: (snapshot: Snapshot) => void, onError?: (message: string | null) => void): () => void;
 
   // ── host only ──────────────────────────────────────────────────────────
   /** Open the current question's outcomes to the room. */

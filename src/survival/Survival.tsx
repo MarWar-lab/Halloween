@@ -16,7 +16,12 @@ import './survival.css';
 
 export default function Survival() {
   const survival = useSurvival();
-  const { session, snapshot } = survival;
+  const { session, snapshot, openScreen } = survival;
+  const params = new URLSearchParams(window.location.search);
+  const screenCode = params.get('screen') === '1' ? params.get('c') : null;
+  useEffect(() => {
+    if (screenCode) void openScreen(screenCode);
+  }, [screenCode, openScreen]);
 
   // index.html carries the other game's title, and a room code read off a
   // browser tab is one of the ways people find their way back in.
@@ -28,6 +33,7 @@ export default function Survival() {
 
   return (
     <div className="survival">
+      {session && survival.error && <p className="error" role="alert">{survival.error}</p>}
       {!session ? (
         <Join survival={survival} />
       ) : !snapshot ? (
@@ -36,7 +42,6 @@ export default function Survival() {
             <span className="pulse" style={{ display: 'inline-block', marginRight: '0.5rem' }} />
             Establishing uplink…
           </p>
-          {survival.error && <p className="error">{survival.error}</p>}
         </div>
       ) : session.view === 'screen' ? (
         <Screen snapshot={snapshot} />
@@ -56,7 +61,7 @@ export default function Survival() {
           <span className="muted">
             {isLocalPlay() && 'local play — percentages are not sealed'}
           </span>
-          {session && session.view !== 'screen' && (
+          {session && (
             <button className="link" onClick={survival.leave}>Leave</button>
           )}
         </footer>

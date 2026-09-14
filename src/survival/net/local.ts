@@ -31,7 +31,7 @@ import type {
   Vote,
   Winner,
 } from '../types';
-import { QUESTIONS } from '../questions';
+import { INTRO_QUESTIONS, QUESTIONS } from '../questions';
 import { SurvivalError, type SurvivalBackend } from './types';
 
 interface Doc {
@@ -157,7 +157,11 @@ export class LocalSurvivalBackend implements SurvivalBackend {
       // Arriving late costs you every question the room has already been
       // through. Mirrors survival_join: no player ever has a gap.
       for (let q = 0; q < CHOICE_QUESTIONS; q += 1) {
-        if (revealedAt(doc, q)) assign(doc, playerId, q, worstOption(q), true);
+        if (revealedAt(doc, q)) {
+          const optionIndex = worstOption(q);
+          assign(doc, playerId, q, optionIndex, true);
+          doc.scores.push({ playerId, questionIdx: q, survivalPct: SEALED[q][optionIndex].survivalPct });
+        }
       }
     }
 
@@ -168,7 +172,9 @@ export class LocalSurvivalBackend implements SurvivalBackend {
   }
 
   async resume(gameId: string) {
-    return { playerId: this.me(gameId), isHost: this.isHost(gameId) };
+    const doc = this.mustRead(gameId);
+    const playerId = doc.players.some((p) => p.id === this.me(gameId)) ? this.me(gameId) : null;
+    return { playerId, isHost: Boolean(playerId && this.isHost(gameId)) };
   }
 
   async resolveCode(code: string) {
@@ -200,18 +206,24 @@ export class LocalSurvivalBackend implements SurvivalBackend {
     if (doc.game.phase !== 'running' || doc.game.revealed) return;
 
     const q = doc.game.questionIdx;
-    for (const player of doc.players) {
-      assign(doc, player.id, q, worstOption(q), true);
-    }
-    // Percentages are written here and nowhere else, so nobody can learn what
-    // their own tap was worth by watching their own row appear.
-    for (const answer of doc.answers.filter((a) => a.questionIdx === q)) {
-      if (doc.scores.some((s) => s.playerId === answer.playerId && s.questionIdx === q)) continue;
-      doc.scores.push({
-        playerId: answer.playerId,
-        questionIdx: q,
-        survivalPct: SEALED[q][answer.optionIndex].survivalPct,
-      });
+    // A warm-up has no worst move and no percentage — nothing was ever at
+    // stake, so a silent player is simply never assigned an answer, and no
+    // survival_scores-equivalent row is ever written. Mirrors the same guard
+    // in supabase/migrations/20260914160000_survival_intro.sql exactly.
+    if (q >= 0) {
+      for (const player of doc.players) {
+        assign(doc, player.id, q, worstOption(q), true);
+      }
+      // Percentages are written here and nowhere else, so nobody can learn what
+      // their own tap was worth by watching their own row appear.
+      for (const answer of doc.answers.filter((a) => a.questionIdx === q)) {
+        if (doc.scores.some((s) => s.playerId === answer.playerId && s.questionIdx === q)) continue;
+        doc.scores.push({
+          playerId: answer.playerId,
+          questionIdx: q,
+          survivalPct: SEALED[q][answer.optionIndex].survivalPct,
+        });
+      }
     }
     doc.game.revealed = true;
     writeDoc(doc);
@@ -226,7 +238,10 @@ export class LocalSurvivalBackend implements SurvivalBackend {
     if (game.phase === 'lobby') game.phase = 'briefing';
     else if (game.phase === 'briefing') {
       game.phase = 'running';
-      game.questionIdx = 0;
+      // Starts on the first warm-up (a negative index), not question 0 — see
+      // questionAt() in questions.ts for how that sign is resolved back into
+      // an actual question.
+      game.questionIdx = -INTRO_QUESTIONS.length;
       game.revealed = false;
     } else if (game.phase === 'running') {
       if (!game.revealed) throw new SurvivalError('Reveal this one first.');
@@ -247,7 +262,7 @@ export class LocalSurvivalBackend implements SurvivalBackend {
     if (!me) throw new SurvivalError('Not in this game.');
     if (doc.game.phase !== 'running') throw new SurvivalError('Nothing to answer right now.');
     if (doc.game.revealed) throw new SurvivalError('That question is already open.');
-    if (optionIndex < 0 || optionIndex > 4) throw new SurvivalError('Not one of the five moves.');
+    if (!Number.isInteger(optionIndex) || optionIndex < 0 || optionIndex > 4) throw new SurvivalError('Not one of the five moves.');
     if (doc.answers.some((a) => a.playerId === me && a.questionIdx === doc.game.questionIdx)) {
       throw new SurvivalError('You have already chosen.', 'already_chosen');
     }
@@ -275,6 +290,9 @@ export class LocalSurvivalBackend implements SurvivalBackend {
     if (!me) throw new SurvivalError('Not in this game.');
     if (doc.game.phase !== 'tribunal') throw new SurvivalError('Voting is closed.');
     if (targetPlayerId === me) throw new SurvivalError('You cannot vote for yourself.');
+    if (!doc.players.some((p) => p.id === targetPlayerId)) {
+      throw new SurvivalError('That person is not in this game.');
+    }
     const existing = doc.votes.find((v) => v.voterId === me);
     if (existing) existing.targetPlayerId = targetPlayerId;
     else doc.votes.push({ voterId: me, targetPlayerId });
@@ -337,8 +355,13 @@ function snapshotFor(doc: Doc, me: string | null): Snapshot {
   const pleadedPlayerIds = doc.pleas.map((p) => p.playerId);
   const votedPlayerIds = doc.votes.map((v) => v.voterId);
 
+  // A warm-up has no SEALED entry — nothing to build a reveal row from here.
+  // Screen.tsx and Player.tsx already know to render a warm-up's outcomes
+  // straight from the public `question.outcomes` instead, the same way the
+  // Supabase backend's `survival_reveal_data` naturally returns nothing for a
+  // negative index (there is no `survival_options` row to find).
   let reveal: RevealRow[] | null = null;
-  if (game.phase === 'running' && game.revealed) {
+  if (game.phase === 'running' && game.revealed && game.questionIdx >= 0) {
     reveal = SEALED[game.questionIdx].map((move, optionIndex) => ({
       optionIndex,
       label: QUESTIONS[game.questionIdx].choices[optionIndex],

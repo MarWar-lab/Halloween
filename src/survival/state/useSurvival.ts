@@ -8,6 +8,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { survivalBackend } from '../net';
 import type { Snapshot } from '../types';
+import { SurvivalError } from '../net/types';
 
 export type View = 'screen' | 'player';
 
@@ -28,12 +29,16 @@ export interface Session {
  * several people, each tab keeps its own seat. It still survives a refresh,
  * which is the case that actually needs to work mid-question.
  */
-const SESSION_KEY = 'survival:session';
+const SESSION_KEY = new URLSearchParams(window.location.search).get('net') === 'local'
+  ? 'survival:session:local' : 'survival:session';
 
 const readSession = (): Session | null => {
   try {
     const raw = sessionStorage.getItem(SESSION_KEY);
-    return raw ? (JSON.parse(raw) as Session) : null;
+    if (!raw) return null;
+    const saved = JSON.parse(raw) as Session;
+    return saved && typeof saved.gameId === 'string' && typeof saved.code === 'string'
+      && (saved.view === 'player' || saved.view === 'screen') ? saved : null;
   } catch {
     return null;
   }
@@ -77,13 +82,18 @@ export function useSurvival(): Survival {
   }, [session]);
 
   const remember = useCallback((next: Session | null) => {
+    sessionRef.current = next;
     setSession(next);
+    setSnapshot(null);
     if (next) sessionStorage.setItem(SESSION_KEY, JSON.stringify(next));
     else sessionStorage.removeItem(SESSION_KEY);
   }, []);
 
   /** Every backend call goes through here, so one failure cannot be silent. */
+  const inFlight = useRef(false);
   const run = useCallback(async (work: () => Promise<void>) => {
+    if (inFlight.current) return;
+    inFlight.current = true;
     setBusy(true);
     setError(null);
     try {
@@ -91,6 +101,7 @@ export function useSurvival(): Survival {
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }, []);
@@ -113,8 +124,11 @@ export function useSurvival(): Survival {
           return;
         }
         remember({ ...saved, playerId, isHost });
-      } catch {
-        if (!cancelled) remember(null);
+      } catch (err) {
+        if (cancelled) return;
+        if (err instanceof SurvivalError && err.code === 'no_such_game') remember(null);
+        // The subscription reports connection failures and keeps retrying.
+        // Preserve the saved seat across a temporary outage.
       }
     })();
     return () => {
@@ -124,7 +138,7 @@ export function useSurvival(): Survival {
 
   useEffect(() => {
     if (!session) return;
-    return backend.subscribe(session.gameId, setSnapshot);
+    return backend.subscribe(session.gameId, setSnapshot, setError);
   }, [backend, session]);
 
   useEffect(() => {
@@ -151,11 +165,12 @@ export function useSurvival(): Survival {
       run(async () => {
         await backend.ready();
         const { gameId, playerId } = await backend.join(code, name);
+        const { isHost } = await backend.resume(gameId);
         remember({
           gameId,
           code: code.trim().toUpperCase(),
           playerId,
-          isHost: false,
+          isHost,
           view: 'player',
         });
       }),
@@ -182,7 +197,7 @@ export function useSurvival(): Survival {
 
   const leave = useCallback(() => {
     remember(null);
-    setSnapshot(null);
+    setError(null);
   }, [remember]);
 
   const act = useCallback(

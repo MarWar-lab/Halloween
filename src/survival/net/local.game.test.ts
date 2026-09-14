@@ -16,6 +16,7 @@ installBrowser();
 
 const { LocalSurvivalBackend } = await import('./local');
 const { SEALED, worstOption } = await import('../sealed');
+const { INTRO_QUESTIONS } = await import('../questions');
 import type { Snapshot } from '../types';
 
 type Backend = InstanceType<typeof LocalSurvivalBackend>;
@@ -52,7 +53,8 @@ describe('The Last Screen Standing, through the local backend', () => {
     await backend.join(code, 'Dev');
     tab('hana');
     await backend.advance(gameId); // briefing
-    await backend.advance(gameId); // running, question 0
+    await backend.advance(gameId); // running — the first warm-up, question_idx negative
+    await skipWarmups(backend, gameId); // every test below assumes it starts at question 0
   });
 
   it('refuses a second tap, because a tap is final', async () => {
@@ -126,6 +128,51 @@ describe('The Last Screen Standing, through the local backend', () => {
     expect(lee.map((a) => a.questionIdx).sort()).toEqual([0, 1]);
     expect(lee.every((a) => a.autoAssigned)).toBe(true);
     expect(lee.map((a) => a.optionIndex)).toEqual([worstOption(0), worstOption(1)]);
+    expect(snap.myScores).toEqual([0, 1].map((q) => ({
+      questionIdx: q, survivalPct: SEALED[q][worstOption(q)].survivalPct,
+    })));
+    await backend.join(code, 'Lee');
+    expect(seenBy(backend, 'lee', gameId).myScores).toHaveLength(2);
+  });
+
+  it('restores the host seat and rejects a deleted local room', async () => {
+    tab('hana');
+    const before = await backend.resume(gameId);
+    const joined = await backend.join(code, 'Hana');
+    expect(await backend.resume(gameId)).toEqual({ playerId: joined.playerId, isHost: true });
+    expect(joined.playerId).toBe(before.playerId);
+    localStorage.removeItem(`survival:game:${gameId}`);
+    await expect(backend.resume(gameId)).rejects.toThrow(/gone/i);
+  });
+
+  it.each([NaN, 1.5, -1, 5])('rejects invalid move %s before writing an answer', async (move) => {
+    tab('cara');
+    await expect(backend.answer(gameId, move)).rejects.toThrow(/five moves/i);
+    expect(seenBy(backend, 'cara', gameId).answers).toHaveLength(0);
+  });
+
+  it('rejects votes for someone outside the room', async () => {
+    await playOut(backend, gameId);
+    tab('hana');
+    await backend.advance(gameId);
+    await backend.advance(gameId);
+    tab('cara');
+    await expect(backend.vote(gameId, 'missing-player')).rejects.toThrow(/not in this game/i);
+    expect(seenBy(backend, 'cara', gameId).votedPlayerIds).toHaveLength(0);
+  });
+
+  it('gives a tribunal arrival all seven scores and a correct standing', async () => {
+    await playOut(backend, gameId);
+    tab('hana');
+    await backend.advance(gameId);
+    await backend.advance(gameId);
+    tab('lee');
+    const joined = await backend.join(code, 'Lee');
+    const snap = seenBy(backend, 'lee', gameId);
+    expect(snap.myScores).toHaveLength(7);
+    const lee = snap.standings!.find((s) => s.playerId === joined.playerId)!;
+    expect(lee.rounds).toBe(7);
+    expect(lee.average).toBe(snap.standings!.find((s) => s.name === 'Hana')!.average);
   });
 
   it('holds every rate back until the tribunal', async () => {
@@ -192,6 +239,89 @@ describe('The Last Screen Standing, through the local backend', () => {
     expect(done.winner![0].votes).toBe(1);
   });
 });
+
+describe('the two warm-ups', () => {
+  it('carry no stakes at all', async () => {
+    installBrowser();
+    const backend = new LocalSurvivalBackend();
+    tab('hana');
+    const made = await backend.create('Hana');
+    tab('cara');
+    await backend.join(made.code, 'Cara');
+    tab('hana');
+    await backend.advance(made.gameId); // briefing
+    await backend.advance(made.gameId); // running — first warm-up
+
+    const started = seenBy(backend, 'hana', made.gameId);
+    expect(started.game.questionIdx).toBe(-INTRO_QUESTIONS.length);
+
+    tab('cara');
+    await backend.answer(made.gameId, 1);
+    tab('hana');
+    await backend.reveal(made.gameId);
+
+    const revealed = seenBy(backend, 'cara', made.gameId);
+    // Who chose what is exactly as public as it is for a real question.
+    expect(revealed.answers.filter((a) => a.questionIdx === started.game.questionIdx)).toHaveLength(1);
+    // But nothing was ever at stake: no figure, for anyone, ever.
+    expect(revealed.myScores).toHaveLength(0);
+  });
+
+  it('never auto-assign a silent player, unlike a real question', async () => {
+    installBrowser();
+    const backend = new LocalSurvivalBackend();
+    tab('hana');
+    const made = await backend.create('Hana');
+    tab('cara');
+    await backend.join(made.code, 'Cara');
+    tab('hana');
+    await backend.advance(made.gameId); // briefing
+    await backend.advance(made.gameId); // running — first warm-up, nobody answers
+    await backend.reveal(made.gameId);
+
+    // Contrast with "gives the worst move to anyone who stayed quiet" above,
+    // which is exactly this assertion but for a real question — there, both
+    // players get an answer row; here, since there is nothing at stake,
+    // silence just stays silence.
+    const snap = seenBy(backend, 'hana', made.gameId);
+    expect(snap.answers).toHaveLength(0);
+  });
+
+  it('are skipped by a late joiner, unlike a real question', async () => {
+    installBrowser();
+    const backend = new LocalSurvivalBackend();
+    tab('hana');
+    const made = await backend.create('Hana');
+    tab('hana');
+    await backend.advance(made.gameId); // briefing
+    await backend.advance(made.gameId); // running — first warm-up
+    await backend.reveal(made.gameId);
+    await backend.advance(made.gameId); // second warm-up
+    await backend.reveal(made.gameId);
+    await backend.advance(made.gameId); // question 0
+
+    tab('lee');
+    await backend.join(made.code, 'Lee');
+    const snap = seenBy(backend, 'lee', made.gameId);
+    // A late joiner is backfilled for every revealed REAL question so nobody
+    // has a gap in their average — but there is no average here to protect,
+    // so a warm-up simply isn't backfilled at all.
+    expect(snap.answers).toHaveLength(0);
+  });
+});
+
+/**
+ * Walk from the first warm-up through to question 0, revealing each along the
+ * way. Every test in the describe block above assumes it starts at question
+ * 0, exactly as it did before warm-ups existed — this is what keeps that true.
+ */
+async function skipWarmups(backend: Backend, gameId: string) {
+  for (let i = 0; i < INTRO_QUESTIONS.length; i += 1) {
+    tab('hana');
+    await backend.reveal(gameId);
+    await backend.advance(gameId);
+  }
+}
 
 /** Run every question to the end, optionally letting one person play well. */
 async function playOut(backend: Backend, gameId: string, best?: string) {

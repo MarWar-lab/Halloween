@@ -4,17 +4,10 @@
  * THIS IS NOT THE AUTHORITY. public.survival_options is, and
  * src/survival/seal.test.ts fails the build the moment these two disagree.
  *
- * A fair question: does keeping these in the bundle not defeat the seal? On
- * the real backend, no — nothing reads this file there. The percentages come
- * from a table with row-level security on, no policy and no grant, reachable
- * only through functions that run as the owner.
- *
- * On `?net=local` it defeats it completely, and that is stated rather than
- * worked around. That backend runs the entire game inside one browser with no
- * database at all, so it has no secrets to keep and cannot be given any.
- * Obfuscating these would cost real code and buy only the impression of
- * safety, which is worse than none. `?net=local` is for playing the game
- * through in several tabs before it is deployed. Play it for real on Supabase.
+ * The simulator and this table must be removed from production bundles.
+ * Not reading the table during live play is insufficient: downloaded JavaScript
+ * is readable by every player. scripts/check-bundle.mjs checks emitted assets.
+ * Local play is available in development or an explicit local-only build.
  */
 
 export interface SealedOption {

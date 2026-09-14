@@ -279,7 +279,23 @@ sb = one(call("POST", "/rest/v1/rpc/survival_join", tok_b, {"p_code": s_code, "p
 check("a second player takes a seat", bool(sb and sb.get("id")))
 
 call("POST", "/rest/v1/rpc/survival_advance", tok_a, {"p_game": s_id})  # briefing
-call("POST", "/rest/v1/rpc/survival_advance", tok_a, {"p_game": s_id})  # running
+call("POST", "/rest/v1/rpc/survival_advance", tok_a, {"p_game": s_id})  # running — opens on the first warm-up
+
+# The two warm-ups first, nobody answering either. This is the live proof of
+# the guarantee the migration makes structural: a warm-up never writes a
+# survival_scores row, whatever happens to it.
+started = one(call("GET", f"/rest/v1/survival_games?id=eq.{s_id}&select=question_idx", tok_a))
+check("the night opens on the first warm-up", started["question_idx"] == -2,
+      f"{started['question_idx']}")
+
+call("POST", "/rest/v1/rpc/survival_reveal", tok_a, {"p_game": s_id})
+warmup_scores = call("GET", f"/rest/v1/survival_scores?game_id=eq.{s_id}", tok_a)
+check("a warm-up never writes a percentage, even when nobody answers",
+      warmup_scores == [], f"{len(warmup_scores or [])} row(s)")
+
+call("POST", "/rest/v1/rpc/survival_advance", tok_a, {"p_game": s_id})  # second warm-up
+call("POST", "/rest/v1/rpc/survival_reveal", tok_a, {"p_game": s_id})
+call("POST", "/rest/v1/rpc/survival_advance", tok_a, {"p_game": s_id})  # question 0, the real gauntlet
 
 # Ben chooses; Ana stays quiet and should be given the worst move.
 call("POST", "/rest/v1/rpc/survival_answer", tok_b, {"p_game": s_id, "p_option": 2})

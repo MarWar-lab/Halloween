@@ -70,6 +70,17 @@ for (const style of gameStyles) {
   check(`${style} is not forced onto every page`, !html.includes(style));
 }
 
+console.log('\n=== production keeps the survival answer table off the client ===');
+// Local-only demos intentionally contain the table; never deploy them as the
+// sealed multiplayer game. The flag must be explicit for this check too.
+if (process.env.ALLOW_LOCAL_ONLY_BUILD !== '1') {
+  const sealedSource = readFileSync(join(root, 'src/survival/sealed.ts'), 'utf8');
+  const outcomes = [...sealedSource.matchAll(/outcome:\s*\n\s*'([^']+)'/g)].map((match) => match[1]);
+  check('all 35 sealed outcomes can be checked', outcomes.length === 35);
+  check('no sealed outcomes are shipped in JavaScript', outcomes.every((outcome) => !code.includes(outcome)));
+  check('no local survival simulator is shipped', !code.includes('survival:game:'));
+}
+
 console.log(`\n${'='.repeat(60)}\n  ${pass} passed, ${fail.length} failed`);
 if (fail.length) {
   for (const f of fail) console.log(`    FAILED: ${f}`);

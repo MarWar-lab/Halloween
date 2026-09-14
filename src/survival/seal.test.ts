@@ -17,7 +17,7 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { OUTCOME_MAX, SEALED, worstOption } from './sealed';
-import { QUESTIONS } from './questions';
+import { INTRO_QUESTIONS, QUESTIONS } from './questions';
 
 const root = join(import.meta.dirname, '../..');
 const migration = readFileSync(
@@ -120,7 +120,44 @@ describe('the sealed values', () => {
   });
 });
 
-describe('the seal does not leak into the bundle', () => {
+/**
+ * The two warm-ups carry no SEALED entry at all — that's the point, there is
+ * nothing to hide — but they still have to be structurally sound: five
+ * choices, five matching outcomes, the same length cap and duration rule as
+ * everything else the host reads aloud.
+ */
+describe('the warm-ups', () => {
+  it('have exactly five choices and five outcomes each', () => {
+    for (const q of INTRO_QUESTIONS) {
+      expect(q.choices).toHaveLength(5);
+      expect(q.outcomes, `${q.title} is missing its outcomes`).toBeDefined();
+      expect(q.outcomes).toHaveLength(5);
+    }
+  });
+
+  it('carry no clip and no percentage of any kind', () => {
+    // No footage matches an icebreaker, and there is nothing for a warm-up to
+    // score — a clip or a survivalPct-shaped field here would be a sign this
+    // question drifted into gauntlet territory by accident.
+    for (const q of INTRO_QUESTIONS) expect(q.clip).toBeUndefined();
+  });
+
+  it('keep their flavour text within the same on-screen budget', () => {
+    for (const q of INTRO_QUESTIONS) {
+      for (const outcome of q.outcomes!) expect(outcome.length).toBeLessThanOrEqual(OUTCOME_MAX);
+    }
+  });
+
+  it('never state a duration either', () => {
+    const duration = /\b\d+\s*(second|minute|hour|day|week|month|year)s?\b/i;
+    for (const q of INTRO_QUESTIONS) {
+      expect(q.setup).not.toMatch(duration);
+      for (const outcome of q.outcomes!) expect(outcome).not.toMatch(duration);
+    }
+  });
+});
+
+describe('sealed data stays behind the local backend source boundary', () => {
   it('keeps every outcome out of every file but sealed.ts', () => {
     const allowed = new Set([
       join(root, 'src/survival/sealed.ts'),
