@@ -8,6 +8,7 @@ import type { Campfire } from '../state/useCampfire';
 import type { VoteInput } from '../net';
 import { Countdown, HowToPlay, Leaderboard, Progress, ReactionBar, cardFor } from './shared';
 import { Glyph } from '../ui/Glyph';
+import { roomProgress } from '../game/waiting';
 
 /**
  * The player's own device. Phone-first, and built on one rule: the screen
@@ -65,6 +66,9 @@ export function Player({ campfire }: { campfire: Campfire }) {
   // How much room the controls need. A player with nothing to do gets the
   // fire, not a panel.
   const sheet = hasSomethingToDo(turn.task) ? 'full' : 'peek';
+
+  // Shared with the host console, so both screens say the same thing.
+  const waiting = roomProgress(snap.players, snap.submittedPlayerIds, snap.votedPlayerIds, round);
 
   return (
     // The fire is the screen, not a thumbnail on it. Everything else floats.
@@ -126,6 +130,26 @@ export function Player({ campfire }: { campfire: Campfire }) {
           {turn.detail && <p className="task-detail">{turn.detail}</p>}
         </div>
 
+        {/* What the rest of the room is doing.
+            Without this the phone went silent the moment you had answered:
+            no count, no names, no clue whether the game was waiting on you or
+            on somebody else. The host could see it all along — "who has acted"
+            is public by design — so there was never a reason to withhold it. */}
+        {waiting && (
+          <p className="room-waiting" aria-live="polite">
+            <strong>{waiting.count}</strong>
+            {waiting.who.length > 0 && (
+              <span>
+                {' '}
+                — waiting on {waiting.who.length > 3
+                  ? `${waiting.who.length} people`
+                  : waiting.who.join(', ')}
+              </span>
+            )}
+            {waiting.who.length === 0 && <span> — that is everyone.</span>}
+          </p>
+        )}
+
         {turn.task.kind === 'write' && (
           <div className="answer">
             <label className="field">
@@ -174,6 +198,7 @@ export function Player({ campfire }: { campfire: Campfire }) {
               <button
                 key={option}
                 className={`side ${ballot.optionIndex === i ? 'chosen' : ''}`}
+                aria-pressed={ballot.optionIndex === i}
                 onClick={() => vote({ optionIndex: i })}
               >
                 {option}
@@ -190,6 +215,7 @@ export function Player({ campfire }: { campfire: Campfire }) {
               <button
                 key={p.id}
                 className={`pick ${ballot.targetPlayerId === p.id ? 'chosen' : ''}`}
+                aria-pressed={ballot.targetPlayerId === p.id}
                 onClick={() => vote({ targetPlayerId: p.id })}
               >
                 <span className="pick-text">{p.name}</span>
@@ -207,6 +233,7 @@ export function Player({ campfire }: { campfire: Campfire }) {
                 <button
                   key={id}
                   className={`pick ${ballot.targetPlayerId === id ? 'chosen' : ''}`}
+                  aria-pressed={ballot.targetPlayerId === id}
                   onClick={() => vote({ targetPlayerId: id })}
                 >
                   {snap.players.find((p) => p.id === id)?.name ?? 'Someone'}
@@ -230,6 +257,7 @@ export function Player({ campfire }: { campfire: Campfire }) {
                 <button
                   key={c.submission.id}
                   className={`pick pick-answer ${ballot.submissionId === c.submission.id ? 'chosen' : ''}`}
+                  aria-pressed={ballot.submissionId === c.submission.id}
                   onClick={() => vote({ submissionId: c.submission.id })}
                 >
                   <span className="reveal-num">{c.number}</span>

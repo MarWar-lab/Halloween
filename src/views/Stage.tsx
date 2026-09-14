@@ -10,6 +10,7 @@ import { pollTally, splitTally } from '../game/scoring';
 import type { Campfire } from '../state/useCampfire';
 import { CardPanel, Countdown, Leaderboard, Progress, cardFor, nameOf } from './shared';
 import { Glyph } from '../ui/Glyph';
+import { ranked } from '../game/standings';
 
 /**
  * The Stage is what the host screen-shares. It is read-only and deliberately
@@ -378,13 +379,13 @@ function cueForEmoji(emoji: string): AtmosphereCue | null {
  * computed from what actually happened, not handed out at random.
  */
 function Awards({ snapshot }: { snapshot: GameSnapshot }) {
-  const ranked = [...snapshot.players].sort((a, b) => b.score - a.score);
-  const [winner] = ranked;
+  const standing = ranked(snapshot.players);
+  const [winner] = standing;
 
   const superlatives: { title: string; who: string; why: string }[] = [];
 
-  const unspent = ranked.filter((p) => !p.passSpent);
-  if (unspent.length > 0 && unspent.length < ranked.length) {
+  const unspent = standing.filter((p) => !p.passSpent);
+  if (unspent.length > 0 && unspent.length < standing.length) {
     superlatives.push({
       title: 'Never blinked',
       who: unspent.map((p) => p.name).join(', '),
@@ -392,7 +393,7 @@ function Awards({ snapshot }: { snapshot: GameSnapshot }) {
     });
   }
 
-  const passers = ranked.filter((p) => p.passSpent);
+  const passers = standing.filter((p) => p.passSpent);
   if (passers.length > 0) {
     superlatives.push({
       title: 'Knew when to fold',
@@ -401,7 +402,7 @@ function Awards({ snapshot }: { snapshot: GameSnapshot }) {
     });
   }
 
-  const tail = ranked[ranked.length - 1];
+  const tail = standing[standing.length - 1];
   if (tail && tail.id !== winner?.id) {
     superlatives.push({
       title: 'Played anyway',
@@ -417,7 +418,7 @@ function Awards({ snapshot }: { snapshot: GameSnapshot }) {
         {winner ? `${winner.name} takes it` : 'That was the night'}
       </h1>
       <ol className="podium">
-        {ranked.slice(0, 3).map((p, i) => (
+        {standing.slice(0, 3).map((p, i) => (
           <li key={p.id} data-place={i + 1}>
             {i === 0 && <Glyph name="podium" size={20} />}
             <span className="podium-name">{p.name}</span>

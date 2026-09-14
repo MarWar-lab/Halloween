@@ -3,6 +3,7 @@ import { formatClock, secondsUntil } from '../lib/clock';
 import { deckById } from '../game/decks';
 import type { Card, Player, Round } from '../game/types';
 import type { Theme } from '../game/themes';
+import { ranked } from '../game/standings';
 import { pacingFor } from '../game/pacing';
 import type { Game, Player as PlayerRow } from '../game/types';
 import { Glyph, type GlyphName } from '../ui/Glyph';
@@ -173,9 +174,9 @@ export function Progress({
   meId?: string | null;
 }) {
   const pace = pacingFor(game, usedCardIds);
-  const ranked = [...players].sort((a, b) => b.score - a.score);
-  const mine = meId ? ranked.findIndex((p) => p.id === meId) : -1;
-  const me = mine >= 0 ? ranked[mine] : null;
+  const order = ranked(players);
+  const mine = meId ? order.findIndex((p) => p.id === meId) : -1;
+  const me = mine >= 0 ? order[mine] : null;
 
   return (
     <div className={`progress state-${pace.state}`}>
@@ -201,7 +202,7 @@ export function Progress({
             {me.score} {me.score === 1 ? 'pt' : 'pts'}
             <em>
               {mine + 1}
-              {ordinal(mine + 1)} of {ranked.length}
+              {ordinal(mine + 1)} of {order.length}
             </em>
           </span>
         )}
@@ -226,7 +227,7 @@ export function Leaderboard({
   limit?: number;
 }) {
   const here = new Set(present);
-  const sorted = [...players].sort((a, b) => b.score - a.score || a.name.localeCompare(b.name));
+  const sorted = ranked(players);
   const shown = limit ? sorted.slice(0, limit) : sorted;
 
   return (

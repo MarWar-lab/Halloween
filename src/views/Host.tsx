@@ -10,6 +10,7 @@ import type { Backend, GameSnapshot } from '../net';
 import type { Campfire } from '../state/useCampfire';
 import { CardPanel, Countdown, HowToPlay, Leaderboard, Progress, cardFor, nameOf } from './shared';
 import { choicesFor, eligibleVoters, myBallot } from '../game/ballot';
+import { roomProgress } from '../game/waiting';
 
 const PHASE_LABEL: Record<string, string> = {
   lobby: 'Lobby',
@@ -520,26 +521,14 @@ function PhaseProgress({ snapshot }: { snapshot: GameSnapshot }) {
 
   const flow = roundFlow(round.mechanic);
   const at = flow.indexOf(round.phase);
-  const total = snapshot.players.length;
 
-  const outstanding = (done: string[]) =>
-    snapshot.players.filter((p) => !done.includes(p.id)).map((p) => p.name);
-
-  let waiting: { count: string; who: string[] } | null = null;
-  if (round.phase === 'submitting') {
-    waiting = {
-      count: `${snapshot.submittedPlayerIds.length} of ${total} answered`,
-      who: outstanding(snapshot.submittedPlayerIds),
-    };
-  } else if (round.phase === 'voting') {
-    // The performer does not vote on their own turn, so they are not missing.
-    const excused = [round.turnPlayerId, round.opponentId].filter(Boolean) as string[];
-    const eligible = snapshot.players.filter((p) => !excused.includes(p.id));
-    waiting = {
-      count: `${snapshot.votedPlayerIds.length} of ${eligible.length} voted`,
-      who: eligible.filter((p) => !snapshot.votedPlayerIds.includes(p.id)).map((p) => p.name),
-    };
-  }
+  // Shared with the player's phone, so the two screens cannot drift apart.
+  const waiting = roomProgress(
+    snapshot.players,
+    snapshot.submittedPlayerIds,
+    snapshot.votedPlayerIds,
+    round,
+  );
 
   return (
     <div className="phase-progress">
@@ -665,6 +654,7 @@ function PlayPanel({
                   <button
                     key={target.id}
                     className={`pick ${ballot.targetPlayerId === target.id ? 'chosen' : ''}`}
+                    aria-pressed={ballot.targetPlayerId === target.id}
                     onClick={() => void cast(player.id, { targetPlayerId: target.id })}
                   >
                     <span className="pick-text">{target.name}</span>
@@ -677,6 +667,7 @@ function PlayPanel({
                   <button
                     key={option}
                     className={`side ${ballot.optionIndex === i ? 'chosen' : ''}`}
+                    aria-pressed={ballot.optionIndex === i}
                     onClick={() => void cast(player.id, { optionIndex: i })}
                   >
                     {option}
@@ -747,6 +738,7 @@ function PlayPanel({
                     <button
                       key={c.submission.id}
                       className={`pick pick-answer ${ballot.submissionId === c.submission.id ? 'chosen' : ''}`}
+                      aria-pressed={ballot.submissionId === c.submission.id}
                       onClick={() => void cast(player.id, { submissionId: c.submission.id })}
                     >
                       <span className="reveal-num">{c.number}</span>
