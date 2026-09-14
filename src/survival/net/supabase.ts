@@ -144,15 +144,6 @@ export class SupabaseSurvivalBackend implements SurvivalBackend {
     };
   }
 
-  async resolveCode(code: string) {
-    await ensureSession();
-    const { data, error } = await this.client.rpc('survival_resolve_code', {
-      p_code: code.trim().toUpperCase(),
-    });
-    if (error) fail('Could not find that room.', error.message);
-    return (data as string | null) ?? null;
-  }
-
   private async fetchSnapshot(gameId: string, seatId: string | null): Promise<Snapshot | null> {
     const { data: gameRow, error: gameError } = await this.client
       .from('survival_games').select('*').eq('id', gameId).maybeSingle();

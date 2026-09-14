@@ -1,5 +1,8 @@
 /**
- * The phone.
+ * The one screen. Everyone plays from their own device — there is no separate
+ * shared screen to read aloud from, so whatever the room needs to know has to
+ * live here: the scenario, all five outcomes once they open, who the room is
+ * waiting on, everyone's final case and rate.
  *
  * One thing on screen at a time, and the rule this enforces: if it is not your
  * move you get NO controls — not disabled ones. A disabled button still asks
@@ -9,7 +12,7 @@
 
 import { useState } from 'react';
 import { OPTION_LETTERS, averageOf, type Snapshot } from '../types';
-import { FINAL_PLEA, INTRO_QUESTIONS, QUESTIONS, questionAt, questionLabel } from '../questions';
+import { FINAL_PLEA, INTRO_QUESTIONS, OPENING, QUESTIONS, questionAt, questionLabel } from '../questions';
 import type { Survival } from '../state/useSurvival';
 import { Clip } from './Clip';
 
@@ -36,19 +39,33 @@ export function Player({ survival, snapshot, me, isHost }: Props) {
 function Task({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
   const { game, players, myScores, answers } = snapshot;
 
-  if (game.phase === 'lobby' || game.phase === 'briefing') {
+  if (game.phase === 'lobby') {
     return (
       <div className="locked">
-        <p className="eyebrow">
-          <span className="pulse" style={{ display: 'inline-block', marginRight: '0.5rem' }} />
-          Vitals stable
+        <p className="muted">Join at <strong>{window.location.host}/survive</strong>, then enter the code:</p>
+        <p className="code-badge">{game.code}</p>
+        <p className="muted" style={{ fontSize: '0.9rem' }}>
+          Start when everyone is actually here — anyone who joins later is marked down
+          for every question they missed.
         </p>
-        <h2>Awaiting deployment…</h2>
-        <p className="muted">
-          {players.length} {players.length === 1 ? 'survivor' : 'survivors'} on the channel.
-          Watch the shared screen.
-        </p>
+        <div className="roster">
+          {players.map((p) => (
+            <span key={p.id} className="seat in">{p.name}</span>
+          ))}
+        </div>
       </div>
+    );
+  }
+
+  if (game.phase === 'briefing') {
+    return (
+      <>
+        <header>
+          <p className="eyebrow">Emergency broadcast</p>
+          <h2>The world ends on a Tuesday</h2>
+        </header>
+        <p className="setup">{OPENING}</p>
+      </>
     );
   }
 
@@ -60,11 +77,12 @@ function Task({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
     if (!game.revealed && !mine) {
       return (
         <>
-          {question.clip && <Clip src={question.clip} variant="strip" />}
+          {question.clip && <Clip src={question.clip} />}
           <header>
             <p className="eyebrow">{questionLabel(game.questionIdx)}</p>
             <h2>{question.title}</h2>
           </header>
+          <p className="setup">{question.setup}</p>
           <div className="moves">
             {question.choices.map((choice, i) => (
               <button
@@ -88,98 +106,192 @@ function Task({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
     if (!game.revealed && mine) {
       return (
         <div className="locked">
-          {question.clip && <Clip src={question.clip} variant="strip" />}
+          {question.clip && <Clip src={question.clip} />}
           <p className="eyebrow">Choice locked</p>
           <p className="big" aria-label={`You chose ${OPTION_LETTERS[mine.optionIndex]}`}>
             {OPTION_LETTERS[mine.optionIndex]}
           </p>
           <p className="muted">{question.choices[mine.optionIndex]}</p>
           <p className="muted">
-            {isWarmup ? 'Waiting on the room' : 'Calculating survival probability. Waiting for the other survivors'} —{' '}
-            {snapshot.answeredPlayerIds.length} of {players.length} in.
+            {isWarmup ? 'Waiting on the room.' : 'Calculating survival probability.'}
           </p>
+          <Waiting ids={snapshot.answeredPlayerIds} players={players} verb="chosen" />
         </div>
       );
     }
 
-    // Revealed. For a real question this is the only moment a figure reaches a
-    // phone, and it is only ever your own — a warm-up has no figure at all, so
-    // it just shows its flavour line instead.
-    const thisRound = myScores.find((s) => s.questionIdx === game.questionIdx);
+    // Revealed. Every outcome opens here, on every device, at once — reading
+    // the room's answers is the whole point of a question that just closed.
+    // The number is the one thing that never joins them: a real question's
+    // percentage stays yours alone until the recap at the very end.
+    const nameOf = (id: string) => players.find((p) => p.id === id)?.name ?? '—';
+    const tookIt = (optionIndex: number) =>
+      answers
+        .filter((a) => a.questionIdx === game.questionIdx && a.optionIndex === optionIndex)
+        .map((a) => nameOf(a.playerId));
+
+    // A warm-up has no SEALED entry and nothing for the backend's
+    // survival_reveal_data to return, so its outcomes are built straight from
+    // the public question data instead of `snapshot.reveal` — same shape, so
+    // the row-rendering below never has to know which kind it is looking at.
+    const rows = isWarmup
+      ? question.outcomes!.map((outcome, i) => ({
+          optionIndex: i, label: question.choices[i], outcome, takers: tookIt(i).length,
+        }))
+      : (snapshot.reveal ?? []);
+
     return (
       <>
-        {question.clip && <Clip src={question.clip} variant="strip" />}
+        {question.clip && <Clip src={question.clip} />}
         <header>
           <p className="eyebrow">Outcome</p>
           <h2>{question.title}</h2>
         </header>
-        {mine && (
-          <p className="muted">
-            You took <strong className="amber">{OPTION_LETTERS[mine.optionIndex]}</strong> —{' '}
-            {question.choices[mine.optionIndex]}
-            {mine.autoAssigned && ' (chosen for you — you were not with us)'}
-            {isWarmup && question.outcomes && ` — ${question.outcomes[mine.optionIndex]}`}
-          </p>
+        <div className="reveal-list">
+          {rows.map((row, i) => (
+            <div
+              key={row.optionIndex}
+              className={`reveal-row${row.optionIndex === mine?.optionIndex ? ' mine-row' : ''}`}
+              style={{ animationDelay: `${i * 0.12}s` }}
+            >
+              <span className="letter">{OPTION_LETTERS[row.optionIndex]}</span>
+              <span style={{ minWidth: 0 }}>
+                <strong>{row.label}</strong>
+                <span className="outcome"> — {row.outcome}</span>
+                {row.takers > 0 && <span className="takers"> [{tookIt(row.optionIndex).join(', ')}]</span>}
+              </span>
+            </div>
+          ))}
+        </div>
+        {isWarmup ? (
+          <p className="talk">Talk it out.</p>
+        ) : (
+          <p className="talk">Talk it out — and keep your own percentage to yourself.</p>
         )}
-        <p className="muted" style={{ fontSize: '0.85rem' }}>
-          {isWarmup
-            ? 'The outcomes are on the shared screen.'
-            : 'The outcomes are on the shared screen. Talk it through — and keep your number to yourself.'}
-        </p>
-        <MyNumbers thisRound={thisRound?.survivalPct} scores={myScores} />
+        {!isWarmup && (
+          <MyNumbers thisRound={myScores.find((s) => s.questionIdx === game.questionIdx)?.survivalPct} scores={myScores} />
+        )}
       </>
     );
   }
 
-  if (game.phase === 'plea') return <Plea survival={survival} snapshot={snapshot} me={me} />;
+  if (game.phase === 'plea') return <PleaStep survival={survival} snapshot={snapshot} me={me} />;
 
   if (game.phase === 'tribunal') {
     const voted = snapshot.votes.find((v) => v.voterId === me);
-    if (voted) {
-      const who = players.find((p) => p.id === voted.targetPlayerId);
-      return (
-        <div className="locked">
-          <p className="eyebrow">Vote cast</p>
-          <h2>{who?.name}</h2>
-          <p className="muted" role="status">{snapshot.votedPlayerIds.length} of {players.length} have voted. Awaiting the final tally.</p>
-        </div>
-      );
-    }
     return (
       <>
         <header>
           <p className="eyebrow">The tribunal</p>
-          <h2>Who takes the seat?</h2>
-          <p className="muted">The rates and the pleas are on the shared screen.</p>
+          <h2>One seat. Make the case.</h2>
         </header>
-        <div className="moves">
-          {players
-            // You cannot vote for yourself, so your own name is not offered.
-            // Offering it greyed out would only invite the question.
-            .filter((p) => p.id !== me)
-            .map((p) => (
-              <button
-                key={p.id}
-                className="move"
-                onClick={() => void survival.vote(p.id)}
-                disabled={survival.busy}
-              >
-                <span className="letter" aria-hidden>▸</span>
-                <span>{p.name}</span>
-              </button>
-            ))}
-        </div>
+        <Board snapshot={snapshot} />
+        {voted ? (
+          <div className="locked">
+            <p className="eyebrow">Vote cast</p>
+            <h2>{players.find((p) => p.id === voted.targetPlayerId)?.name}</h2>
+            <Waiting ids={snapshot.votedPlayerIds} players={players} verb="voted" />
+          </div>
+        ) : (
+          <div className="moves">
+            {players
+              // You cannot vote for yourself, so your own name is not offered.
+              // Offering it greyed out would only invite the question.
+              .filter((p) => p.id !== me)
+              .map((p) => (
+                <button
+                  key={p.id}
+                  className="move"
+                  onClick={() => void survival.vote(p.id)}
+                  disabled={survival.busy}
+                >
+                  <span className="letter" aria-hidden>▸</span>
+                  <span>{p.name}</span>
+                </button>
+              ))}
+          </div>
+        )}
       </>
     );
   }
 
   // Result.
   return (
-    <div className="locked">
-      <p className="eyebrow">Extraction complete</p>
-      <h2>{(snapshot.winner ?? []).map((w) => w.name).join(' and ') || 'Nobody'}</h2>
-      <p className="muted">Look at the shared screen.</p>
-      <MyNumbers scores={myScores} publicRates />
+    <>
+      <header>
+        <p className="eyebrow">Extraction complete</p>
+        <h2>{winnerLine(snapshot)}</h2>
+      </header>
+      <Board snapshot={snapshot} />
+    </>
+  );
+}
+
+const winnerLine = (snapshot: Snapshot): string => {
+  const winners = snapshot.winner ?? [];
+  if (winners.length === 0) return 'Nobody made it';
+  if (winners.length === 1) return `${winners[0].name} takes the seat`;
+  // Level on votes and on survival rate. Two people can share a helicopter.
+  return `${winners.map((w) => w.name).join(' and ')} share the seat`;
+};
+
+/**
+ * The tribunal board: name, plea, and — at last — the rate.
+ *
+ * This is the first and only moment in the game that shows anybody's figure
+ * but your own, and it shows all of them at once. That is the reveal the
+ * whole night has been holding back. Vote tallies stay hidden until the
+ * result, so nobody piles onto whoever is already ahead mid-vote.
+ */
+function Board({ snapshot }: { snapshot: Snapshot }) {
+  const { standings, pleas, players, votes, game } = snapshot;
+  const pleaOf = (id: string) => pleas.find((p) => p.playerId === id)?.text;
+  const rows = standings ?? players.map((p) => ({
+    playerId: p.id, name: p.name, rounds: 0, average: 0,
+  }));
+
+  return (
+    <div className="board">
+      {rows.map((row) => {
+        const tally = votes.filter((v) => v.targetPlayerId === row.playerId).length;
+        return (
+          <div key={row.playerId} className="board-row">
+            <span style={{ minWidth: 0 }}>
+              <span className="who">{row.name}</span>
+              <span className="said"> — “{pleaOf(row.playerId) ?? 'said nothing'}”</span>
+              {game.phase === 'result' && tally > 0 && (
+                <span className="takers"> · {tally} {tally === 1 ? 'vote' : 'votes'}</span>
+              )}
+            </span>
+            <span className="rate">{row.average}%</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * Who the room is waiting on, on every device that cares — there is no shared
+ * screen carrying this anymore. Done and not-done differ in shape AND colour,
+ * because across nine seats on a call a subtle difference is no difference.
+ */
+function Waiting({
+  ids, players, verb,
+}: { ids: string[]; players: Snapshot['players']; verb: string }) {
+  const done = new Set(ids);
+  return (
+    <div>
+      <div className="roster">
+        {players.map((p) => (
+          <span key={p.id} className={done.has(p.id) ? 'seat in' : 'seat out'}>
+            {p.name}
+          </span>
+        ))}
+      </div>
+      <p className="sr-only" role="status">
+        {done.size} of {players.length} have {verb}.
+      </p>
     </div>
   );
 }
@@ -188,7 +300,7 @@ function Task({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
  * Your own figures, and nobody else's — the phone has no way to render another
  * player's, because the backend never sent one.
  */
-function MyNumbers({ thisRound, scores, publicRates = false }: { thisRound?: number; scores: Snapshot['myScores']; publicRates?: boolean }) {
+function MyNumbers({ thisRound, scores }: { thisRound?: number; scores: Snapshot['myScores'] }) {
   const average = averageOf(scores);
   if (average === null) return null;
   return (
@@ -203,9 +315,66 @@ function MyNumbers({ thisRound, scores, publicRates = false }: { thisRound?: num
         {scores.length === 1 ? 'call' : 'calls'}
       </span>
       <span className="muted" style={{ fontSize: '0.75rem' }}>
-        {publicRates ? 'The tribunal has opened everyone’s survival rate.' : 'Nobody else can see this. Keep it that way.'}
+        Nobody else can see this. Keep it that way.
       </span>
     </div>
+  );
+}
+
+/**
+ * The plea phase opens with a private recap — nobody has seen a single number
+ * all night, so this is the first moment any of it adds up. It is a purely
+ * local step: nothing here is synced or written anywhere, it is just a beat
+ * before the composer, and every player dismisses their own on their own
+ * schedule rather than everyone moving on together.
+ */
+function PleaStep({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
+  const [recapSeen, setRecapSeen] = useState(false);
+  if (!recapSeen) {
+    return <Recap snapshot={snapshot} me={me} onContinue={() => setRecapSeen(true)} />;
+  }
+  return <Plea survival={survival} snapshot={snapshot} me={me} />;
+}
+
+function Recap({ snapshot, me, onContinue }: { snapshot: Snapshot; me: string; onContinue: () => void }) {
+  const mine = snapshot.answers.filter((a) => a.playerId === me && a.questionIdx >= 0);
+  const rows = QUESTIONS.map((q, i) => {
+    const answer = mine.find((a) => a.questionIdx === i);
+    const score = snapshot.myScores.find((s) => s.questionIdx === i);
+    return {
+      title: q.title,
+      letter: answer ? OPTION_LETTERS[answer.optionIndex] : '—',
+      label: answer ? q.choices[answer.optionIndex] : 'no answer',
+      pct: score?.survivalPct,
+    };
+  });
+  const average = averageOf(snapshot.myScores);
+
+  return (
+    <>
+      <header>
+        <p className="eyebrow">Your night</p>
+        <h2>Before you plead your case</h2>
+      </header>
+      <div className="recap-list">
+        {rows.map((r) => (
+          <div key={r.title} className="recap-row">
+            <span style={{ minWidth: 0 }}>
+              <strong>{r.title}</strong>
+              <span className="muted"> — {r.letter}: {r.label}</span>
+            </span>
+            <span className="rate">{r.pct ?? '—'}%</span>
+          </div>
+        ))}
+      </div>
+      {average !== null && (
+        <p className="muted">
+          Your average: <strong className="amber">{average}%</strong>. Still yours alone —
+          the room finds out at the tribunal.
+        </p>
+      )}
+      <button className="primary" onClick={onContinue}>Continue to your plea</button>
+    </>
   );
 }
 
@@ -219,7 +388,7 @@ function Plea({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
       <div className="locked">
         <p className="eyebrow">Plea filed</p>
         <p className="muted">“{existing.text}”</p>
-        <p className="muted" role="status">{snapshot.pleadedPlayerIds.length} of {snapshot.players.length} pleas filed. Waiting for the host to open the tribunal.</p>
+        <Waiting ids={snapshot.pleadedPlayerIds} players={snapshot.players} verb="filed a plea" />
       </div>
     );
   }
@@ -230,6 +399,7 @@ function Plea({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
         <p className="eyebrow">The chopper is leaving</p>
         <h2>Why should we take YOU?</h2>
       </header>
+      <p className="setup">{FINAL_PLEA.setup}</p>
       <textarea
         rows={4}
         value={text}
@@ -265,15 +435,11 @@ function Console({ survival, snapshot }: { survival: Survival; snapshot: Snapsho
   const remaining = game.phase === 'plea'
     ? players.length - snapshot.pleadedPlayerIds.length
     : game.phase === 'tribunal' ? players.length - snapshot.votedPlayerIds.length : 0;
-  const screenUrl = new URL(window.location.href);
-  screenUrl.searchParams.set('c', game.code);
-  screenUrl.searchParams.set('screen', '1');
   if (game.phase === 'result') return null;
 
   return (
     <div className="console">
       <p className="eyebrow">Host</p>
-      <a className="link" href={screenUrl.toString()} target="_blank" rel="noopener noreferrer">Open shared screen ↗</a>
       {(game.phase === 'plea' || game.phase === 'tribunal') && (
         <p className="muted" role="status">
           {players.length - remaining} of {players.length} have {game.phase === 'plea' ? 'filed a plea' : 'voted'}.

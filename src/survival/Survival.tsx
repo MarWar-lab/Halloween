@@ -4,24 +4,21 @@
  * It shares the repo, the Supabase project, the anonymous sign-in and the
  * deployment with Campfire, and nothing else: no engine, no cards, no canvas,
  * no stylesheet. The two games sit side by side rather than inside one another.
+ *
+ * Every joined device shows the same single view — there is no separate
+ * shared screen to open in a second tab. See src/survival/views/Player.tsx.
  */
 
 import { useEffect } from 'react';
 import { Join } from './views/Join';
 import { Player } from './views/Player';
-import { Screen } from './views/Screen';
 import { useSurvival } from './state/useSurvival';
 import { isLocalPlay } from './net';
 import './survival.css';
 
 export default function Survival() {
   const survival = useSurvival();
-  const { session, snapshot, openScreen } = survival;
-  const params = new URLSearchParams(window.location.search);
-  const screenCode = params.get('screen') === '1' ? params.get('c') : null;
-  useEffect(() => {
-    if (screenCode) void openScreen(screenCode);
-  }, [screenCode, openScreen]);
+  const { session, snapshot } = survival;
 
   // index.html carries the other game's title, and a room code read off a
   // browser tab is one of the ways people find their way back in.
@@ -43,13 +40,11 @@ export default function Survival() {
             Establishing uplink…
           </p>
         </div>
-      ) : session.view === 'screen' ? (
-        <Screen snapshot={snapshot} />
       ) : (
         <Player
           survival={survival}
           snapshot={snapshot}
-          me={session.playerId ?? ''}
+          me={session.playerId}
           isHost={session.isHost}
         />
       )}

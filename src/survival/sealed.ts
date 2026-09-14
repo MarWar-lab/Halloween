@@ -211,9 +211,9 @@ export const SEALED: SealedOption[][] = [
 /**
  * The cap on outcome prose, asserted in the seal test.
  *
- * Five of these have to sit on a shared screen at 1366x768 without scrolling.
- * A limit enforced by a test is the only kind that survives contact with
- * somebody improving a joke.
+ * Five of these have to sit in a reveal list on a phone without turning into a
+ * wall of text. A limit enforced by a test is the only kind that survives
+ * contact with somebody improving a joke.
  */
 export const OUTCOME_MAX = 160;
 

@@ -44,7 +44,7 @@ export interface Question {
  * Resolve whatever `question_idx` the game is currently on to the question it
  * names. The index can be negative (a warm-up, counting back from -1) or
  * 0..QUESTIONS.length-1 (a real question) — this is the one place that sign
- * is handled, so Screen.tsx and Player.tsx never have to think about it.
+ * is handled, so Player.tsx never has to think about it.
  */
 export function questionAt(idx: number): Question {
   return idx < 0 ? INTRO_QUESTIONS[INTRO_QUESTIONS.length + idx] : QUESTIONS[idx];

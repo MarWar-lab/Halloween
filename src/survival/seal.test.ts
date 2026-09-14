@@ -78,9 +78,9 @@ describe('the sealed values', () => {
   });
 
   it('and the public labels match the sealed ones', () => {
-    // The screens render the label from questions.ts and join the migration's
+    // The phone renders the label from questions.ts and joins the migration's
     // row on option_index alone, so a drift here shows up as a red test rather
-    // than as a shared screen displaying a move nobody was offered.
+    // than as a reveal displaying a move nobody was offered.
     for (const row of rows) {
       expect(QUESTIONS[row.questionIdx].choices[row.optionIndex]).toBe(row.label);
     }

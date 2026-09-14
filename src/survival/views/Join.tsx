@@ -74,12 +74,6 @@ export function Join({ survival }: { survival: Survival }) {
       <button className="link" disabled={survival.busy} onClick={() => setMode(mode === 'join' ? 'create' : 'join')}>
         {mode === 'join' ? 'Or start a new game as host' : 'Or join a game with a code'}
       </button>
-
-      {mode === 'join' && code.trim().length === 4 && (
-        <button className="link" disabled={survival.busy} onClick={() => void survival.openScreen(code.trim())}>
-          Open the shared screen for this room instead
-        </button>
-      )}
     </div>
   );
 }

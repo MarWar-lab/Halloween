@@ -3,8 +3,7 @@
  *
  * State lives in localStorage (shared by every tab on this origin); identity
  * lives in sessionStorage (per tab), which is what makes solo testing work:
- * open the shared screen in one tab and four players in four more, and each
- * tab is a different person.
+ * open five tabs on the same room code and each one is a different person.
  *
  * IT CANNOT KEEP THE SEAL, and that is stated rather than worked around. Every
  * percentage it scores with is in the bundle, two clicks from devtools, because
@@ -175,10 +174,6 @@ export class LocalSurvivalBackend implements SurvivalBackend {
     const doc = this.mustRead(gameId);
     const playerId = doc.players.some((p) => p.id === this.me(gameId)) ? this.me(gameId) : null;
     return { playerId, isHost: Boolean(playerId && this.isHost(gameId)) };
-  }
-
-  async resolveCode(code: string) {
-    return localStorage.getItem(codeKey(code.trim().toUpperCase()));
   }
 
   subscribe(gameId: string, onChange: (snapshot: Snapshot) => void) {
@@ -356,10 +351,10 @@ function snapshotFor(doc: Doc, me: string | null): Snapshot {
   const votedPlayerIds = doc.votes.map((v) => v.voterId);
 
   // A warm-up has no SEALED entry — nothing to build a reveal row from here.
-  // Screen.tsx and Player.tsx already know to render a warm-up's outcomes
-  // straight from the public `question.outcomes` instead, the same way the
-  // Supabase backend's `survival_reveal_data` naturally returns nothing for a
-  // negative index (there is no `survival_options` row to find).
+  // Player.tsx already knows to render a warm-up's outcomes straight from the
+  // public `question.outcomes` instead, the same way the Supabase backend's
+  // `survival_reveal_data` naturally returns nothing for a negative index
+  // (there is no `survival_options` row to find).
   let reveal: RevealRow[] | null = null;
   if (game.phase === 'running' && game.revealed && game.questionIdx >= 0) {
     reveal = SEALED[game.questionIdx].map((move, optionIndex) => ({

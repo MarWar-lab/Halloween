@@ -10,24 +10,20 @@ import { survivalBackend } from '../net';
 import type { Snapshot } from '../types';
 import { SurvivalError } from '../net/types';
 
-export type View = 'screen' | 'player';
-
 export interface Session {
   gameId: string;
   code: string;
-  /** Null on the shared screen, which watches without taking a seat. */
-  playerId: string | null;
+  playerId: string;
   isHost: boolean;
-  view: View;
 }
 
 /**
- * sessionStorage, not localStorage, and the difference matters twice.
+ * sessionStorage, not localStorage.
  *
- * It is per-tab, so the shared screen can be opened beside a player without
- * one overwriting the other — and under `?net=local`, where several tabs are
- * several people, each tab keeps its own seat. It still survives a refresh,
- * which is the case that actually needs to work mid-question.
+ * It is per-tab, so under `?net=local` — where several tabs are several
+ * people — each tab keeps its own seat rather than overwriting the others'.
+ * It still survives a refresh, which is the case that actually needs to work
+ * mid-question.
  */
 const SESSION_KEY = new URLSearchParams(window.location.search).get('net') === 'local'
   ? 'survival:session:local' : 'survival:session';
@@ -38,7 +34,7 @@ const readSession = (): Session | null => {
     if (!raw) return null;
     const saved = JSON.parse(raw) as Session;
     return saved && typeof saved.gameId === 'string' && typeof saved.code === 'string'
-      && (saved.view === 'player' || saved.view === 'screen') ? saved : null;
+      && typeof saved.playerId === 'string' ? saved : null;
   } catch {
     return null;
   }
@@ -53,7 +49,6 @@ export interface Survival {
   codeFromUrl: string;
   create: (name: string) => Promise<void>;
   join: (code: string, name: string) => Promise<void>;
-  openScreen: (code: string) => Promise<void>;
   leave: () => void;
   reveal: () => Promise<void>;
   advance: () => Promise<void>;
@@ -118,7 +113,6 @@ export function useSurvival(): Survival {
         await backend.ready();
         const { playerId, isHost } = await backend.resume(saved.gameId);
         if (cancelled) return;
-        if (saved.view === 'screen') return;
         if (!playerId) {
           remember(null);
           return;
@@ -155,7 +149,7 @@ export function useSurvival(): Survival {
       run(async () => {
         await backend.ready();
         const { gameId, code, playerId } = await backend.create(name);
-        remember({ gameId, code, playerId, isHost: true, view: 'player' });
+        remember({ gameId, code, playerId, isHost: true });
       }),
     [backend, remember, run],
   );
@@ -171,25 +165,6 @@ export function useSurvival(): Survival {
           code: code.trim().toUpperCase(),
           playerId,
           isHost,
-          view: 'player',
-        });
-      }),
-    [backend, remember, run],
-  );
-
-  /** Open the shared screen in a second tab, without taking a seat. */
-  const openScreen = useCallback(
-    (code: string) =>
-      run(async () => {
-        await backend.ready();
-        const gameId = await backend.resolveCode(code);
-        if (!gameId) throw new Error('No game with that code.');
-        remember({
-          gameId,
-          code: code.trim().toUpperCase(),
-          playerId: null,
-          isHost: false,
-          view: 'screen',
         });
       }),
     [backend, remember, run],
@@ -218,7 +193,6 @@ export function useSurvival(): Survival {
     codeFromUrl,
     create,
     join,
-    openScreen,
     leave,
     reveal: act((id) => backend.reveal(id)),
     advance: act((id) => backend.advance(id)),

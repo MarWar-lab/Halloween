@@ -23,9 +23,6 @@ export interface SurvivalBackend {
   /** Re-attach after a refresh, without taking a second seat. */
   resume(gameId: string): Promise<{ playerId: string | null; isHost: boolean }>;
 
-  /** Room code → game id, for opening the shared screen in a second tab. */
-  resolveCode(code: string): Promise<string | null>;
-
   subscribe(gameId: string, onChange: (snapshot: Snapshot) => void, onError?: (message: string | null) => void): () => void;
 
   // ── host only ──────────────────────────────────────────────────────────

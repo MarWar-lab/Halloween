@@ -151,10 +151,34 @@ its own RPCs, its own stylesheet. Nothing under `src/game/`, `src/net/`,
 `src/scene/` or `src/views/` is touched by it, and nothing it does can regress
 Campfire.
 
-Eight scripted questions. Seven offer five moves, everyone taps one, the
-outcomes are read out with each person's name against what they chose, and the
-room argues. No voting until the last question, which is an open plea followed
-by one vote for a winner.
+Two zero-stakes warm-ups, then seven scripted questions, then a plea. Every
+question offers five moves; everyone taps one; every device opens the same
+full reveal — all five outcomes, each person's name against what they chose.
+No voting until the very last step: an open plea, followed by one vote for
+a winner.
+
+**Everyone plays from their own device — there is no separate shared screen.**
+`src/survival/views/Player.tsx` is the whole game: the scenario, the tap, the
+reveal, the tribunal board, all on one screen per person. That used to be
+split across a `Screen.tsx` (screen-shared on the call) and a `Player.tsx`
+(each phone), Jackbox-style — removed once it turned out to be a worse fit
+for a small remote team than the original brief assumed. `Screen.tsx` is gone,
+along with the `openScreen`/`resolveCode` plumbing that opened it in a second
+tab. If you're looking for where a piece of that old shared screen went, it's
+almost certainly inside `Player.tsx` now — the `Board` component (tribunal +
+result), the reveal list, the lobby's big code display, the briefing and plea
+scenario text all moved there rather than disappearing.
+
+Four of the seven real questions carry a short looping video clip
+(`public/clips/*.mp4`, referenced by `Question.clip`) — decoration behind the
+reveal, never content in its own right; three questions and both warm-ups
+show nothing, deliberately, rather than force a mismatched clip onto them.
+
+A private per-question recap (your choice and its percentage, question by
+question) opens once, locally, right before the plea composer — the first
+number of any kind a player sees all night. It is pure client state (a
+`useState` in `Player.tsx`), not a server phase: nothing about it is synced,
+because each player dismisses their own on their own schedule.
 
 **Its one load-bearing rule: your survival percentage is yours.** You see what
 your own move cost you; nobody else does until the tribunal. That is why it has
