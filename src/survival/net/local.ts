@@ -17,7 +17,7 @@
  */
 
 import { SEALED, worstOption } from '../sealed';
-import { CHOICE_QUESTIONS } from '../types';
+import { CHOICE_QUESTIONS, survivalOddsOf, survivalOddsPrecise } from '../types';
 import type {
   Answer,
   Game,
@@ -367,36 +367,42 @@ function snapshotFor(doc: Doc, me: string | null): Snapshot {
     }));
   }
 
+  // Ranked and tie-broken on the unrounded product — seven compounding rounds
+  // routinely lands several players on the same rounded "0.0%", and deciding
+  // either on that shared display value would call a real difference a tie.
+  // `precise` never leaves this function; only the rounded `average` does.
+  const withOdds = doc.players.map((player) => {
+    const mine = doc.scores.filter((s) => s.playerId === player.id);
+    return {
+      playerId: player.id,
+      name: player.name,
+      rounds: mine.length,
+      precise: survivalOddsPrecise(mine) ?? 0,
+      average: survivalOddsOf(mine) ?? 0,
+    };
+  });
+
   let standings: Standing[] | null = null;
   if (ratesAreOpen(doc)) {
-    standings = doc.players
-      .map((player) => {
-        const mine = doc.scores.filter((s) => s.playerId === player.id);
-        const total = mine.reduce((sum, s) => sum + s.survivalPct, 0);
-        return {
-          playerId: player.id,
-          name: player.name,
-          rounds: mine.length,
-          average: mine.length ? Math.round((total / mine.length) * 10) / 10 : 0,
-        };
-      })
-      .sort((a, b) => b.average - a.average || a.name.localeCompare(b.name));
+    standings = [...withOdds]
+      .sort((a, b) => b.precise - a.precise || a.name.localeCompare(b.name))
+      .map(({ playerId, name, rounds, average }) => ({ playerId, name, rounds, average }));
   }
 
   let winner: Winner[] | null = null;
-  if (game.phase === 'result' && standings) {
-    const tally = standings.map((s) => ({
-      playerId: s.playerId,
-      name: s.name,
+  if (game.phase === 'result') {
+    const tally = withOdds.map((s) => ({
+      ...s,
       votes: doc.votes.filter((v) => v.targetPlayerId === s.playerId).length,
-      average: s.average,
     }));
     const mostVotes = Math.max(0, ...tally.map((t) => t.votes));
     const contenders = tally.filter((t) => t.votes === mostVotes);
-    const best = Math.max(...contenders.map((t) => t.average));
+    const best = Math.max(...contenders.map((t) => t.precise));
     // Level on both and they share the seat, rather than a third rule nobody
     // agreed to.
-    winner = contenders.filter((t) => t.average === best);
+    winner = contenders
+      .filter((t) => t.precise === best)
+      .map(({ playerId, name, votes, average }) => ({ playerId, name, votes, average }));
   }
 
   return {

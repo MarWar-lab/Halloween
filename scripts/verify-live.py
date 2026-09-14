@@ -321,6 +321,17 @@ check("you can read your own percentage",
       f"{json.dumps(mine_b)[:80]}")
 check("and nobody else's", all(r["player_id"] == sb["id"] for r in (mine_b or [])))
 
+# Odds compound (product), not average — see survival_odds_precise. Neither
+# helper is gated on its own; only survival_standings/survival_winner are.
+odds = call("POST", "/rest/v1/rpc/survival_odds", tok_b, {"p_game": s_id, "p_player": sb["id"]})
+check("a player cannot ask their own odds directly, only through the tribunal",
+      isinstance(odds, dict) and bool(odds.get("__error__")),
+      f"got {json.dumps(odds)[:80]}")
+precise = call("POST", "/rest/v1/rpc/survival_odds_precise", tok_b, {"p_game": s_id, "p_player": sb["id"]})
+check("nor the unrounded figure behind it",
+      isinstance(precise, dict) and bool(precise.get("__error__")),
+      f"got {json.dumps(precise)[:80]}")
+
 standings = call("POST", "/rest/v1/rpc/survival_standings", tok_b, {"p_game": s_id})
 check("the survival rates are refused before the tribunal",
       isinstance(standings, dict) and bool(standings.get("__error__")),

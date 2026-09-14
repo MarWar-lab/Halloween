@@ -364,6 +364,10 @@ check('a player cannot ask which move is worst',
   !!(await refuses(`select survival_worst_option(0)`)));
 check('a player cannot write an answer directly',
   !!(await refuses(`select survival_assign($1,$2,0,1,false)`, [sgame.id, pCara.id])));
+check('a player cannot ask anyone\'s odds directly, not even their own',
+  !!(await refuses(`select survival_odds($1,$2)`, [sgame.id, pCara.id])));
+check('nor the unrounded figure behind it',
+  !!(await refuses(`select survival_odds_precise($1,$2)`, [sgame.id, pCara.id])));
 
 console.log('\n--- two warm-ups, nobody answering, nothing at stake ---');
 await be(SHOST);
@@ -518,6 +522,63 @@ const winner = (await db.query(`select * from survival_winner($1)`, [sgame.id]))
 check('a tied vote is broken by the higher survival average',
   winner.length === 1 && winner[0].name === 'Cara',
   winner.map((w) => `${w.name} ${w.votes}v ${w.average}%`).join(', '));
+
+console.log('\n--- two players who round to the same "0.0%" but are not tied ---');
+// Seven compounding rounds routinely lands everyone near zero. Both of these
+// players show "0.0%" once rounded, and if the ranking or the tie-break ever
+// compared THAT figure instead of the unrounded one, this would misreport a
+// real difference as a draw.
+const PING = '88888888-8888-8888-8888-888888888888';
+const PONG = '99999999-9999-9999-9999-999999999999';
+await be(SHOST);
+const pgame = (await db.query(`select * from survival_create('Ref')`)).rows[0];
+await be(PING);
+const pPing = (await db.query(`select * from survival_join($1,'Ping')`, [pgame.code])).rows[0];
+await be(PONG);
+const pPong = (await db.query(`select * from survival_join($1,'Pong')`, [pgame.code])).rows[0];
+
+// Written directly rather than played through seven real rounds: the point
+// here is the arithmetic on already-scored rows, not how they got scored.
+await be(SHOST);
+await db.exec('reset role;');
+for (const pct of [10, 10, 10, 10]) {
+  await db.query(
+    `insert into survival_scores (game_id, player_id, question_idx, survival_pct)
+     values ($1,$2,(select coalesce(max(question_idx),-1)+1 from survival_scores
+                     where game_id=$1 and player_id=$2),$3)`,
+    [pgame.id, pPing.id, pct]);
+}
+for (const pct of [10, 10, 10, 15]) {
+  await db.query(
+    `insert into survival_scores (game_id, player_id, question_idx, survival_pct)
+     values ($1,$2,(select coalesce(max(question_idx),-1)+1 from survival_scores
+                     where game_id=$1 and player_id=$2),$3)`,
+    [pgame.id, pPong.id, pct]);
+}
+await db.query(`select survival_advance($1)`, [pgame.id]); // briefing
+await db.query(`select survival_advance($1)`, [pgame.id]); // running
+await db.query(`select survival_reveal($1)`, [pgame.id]);
+await db.query(`update survival_games set phase='tribunal' where id=$1`, [pgame.id]);
+
+await be(PING);
+const rounded = (await db.query(`select * from survival_standings($1)`, [pgame.id])).rows;
+check('both players display as the same rounded figure',
+  rounded.every((r) => Number(r.average) === 0),
+  rounded.map((r) => `${r.name} ${r.average}%`).join(', '));
+check('but Pong (0.015%) is ranked above Ping (0.01%) underneath it',
+  rounded[0]?.name === 'Pong',
+  rounded.map((r) => r.name).join(' > '));
+
+await db.query(`select survival_vote($1,$2)`, [pgame.id, pPong.id]);
+await be(PONG);
+await db.query(`select survival_vote($1,$2)`, [pgame.id, pPing.id]);
+await be(SHOST);
+await db.query(`select survival_advance($1)`, [pgame.id]); // → result
+await be(PING);
+const tieBreak = (await db.query(`select * from survival_winner($1)`, [pgame.id])).rows;
+check('a vote tie is broken by the same unrounded figure, not the display one',
+  tieBreak.length === 1 && tieBreak[0].name === 'Pong',
+  tieBreak.map((w) => `${w.name} ${w.votes}v ${w.average}%`).join(', '));
 
 console.log('\n--- and nothing of this travels over realtime ---');
 await db.exec('reset role;');

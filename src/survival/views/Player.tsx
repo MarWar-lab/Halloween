@@ -11,7 +11,7 @@
  */
 
 import { useState } from 'react';
-import { OPTION_LETTERS, averageOf, type Snapshot } from '../types';
+import { OPTION_LETTERS, survivalOddsOf, type Snapshot } from '../types';
 import { FINAL_PLEA, INTRO_QUESTIONS, OPENING, QUESTIONS, questionAt, questionLabel } from '../questions';
 import type { Survival } from '../state/useSurvival';
 import { Clip } from './Clip';
@@ -301,8 +301,8 @@ function Waiting({
  * player's, because the backend never sent one.
  */
 function MyNumbers({ thisRound, scores }: { thisRound?: number; scores: Snapshot['myScores'] }) {
-  const average = averageOf(scores);
-  if (average === null) return null;
+  const odds = survivalOddsOf(scores);
+  if (odds === null) return null;
   return (
     <div className="mine">
       {thisRound !== undefined && (
@@ -311,7 +311,7 @@ function MyNumbers({ thisRound, scores }: { thisRound?: number; scores: Snapshot
         </span>
       )}
       <span className="muted">
-        Your survival rate so far: <strong>{average}%</strong> over {scores.length}{' '}
+        Your survival rate so far: <strong>{odds}%</strong> over {scores.length}{' '}
         {scores.length === 1 ? 'call' : 'calls'}
       </span>
       <span className="muted" style={{ fontSize: '0.75rem' }}>
@@ -348,7 +348,7 @@ function Recap({ snapshot, me, onContinue }: { snapshot: Snapshot; me: string; o
       pct: score?.survivalPct,
     };
   });
-  const average = averageOf(snapshot.myScores);
+  const odds = survivalOddsOf(snapshot.myScores);
 
   return (
     <>
@@ -367,10 +367,10 @@ function Recap({ snapshot, me, onContinue }: { snapshot: Snapshot; me: string; o
           </div>
         ))}
       </div>
-      {average !== null && (
+      {odds !== null && (
         <p className="muted">
-          Your average: <strong className="amber">{average}%</strong>. Still yours alone —
-          the room finds out at the tribunal.
+          Your odds of making it out: <strong className="amber">{odds}%</strong>. Still yours
+          alone — the room finds out at the tribunal.
         </p>
       )}
       <button className="primary" onClick={onContinue}>Continue to your plea</button>

@@ -238,6 +238,46 @@ describe('The Last Screen Standing, through the local backend', () => {
     expect(done.winner![0].playerId).toBe(cara);
     expect(done.winner![0].votes).toBe(1);
   });
+
+  it('ranks and breaks ties on the unrounded odds, not the displayed ones', async () => {
+    // Seven compounding rounds routinely lands more than one player on the
+    // same rounded "0.0%". Written directly rather than played through real
+    // rounds: the point here is the arithmetic on already-scored rows.
+    await playOut(backend, gameId);
+    tab('hana');
+    await backend.advance(gameId); // → plea
+    await backend.advance(gameId); // → tribunal
+
+    const snap = seenBy(backend, 'hana', gameId);
+    const [hana, cara] = ['Hana', 'Cara'].map((n) => idOf(snap, n));
+    const doc = JSON.parse(localStorage.getItem(`survival:game:${gameId}`)!);
+    doc.scores = doc.scores.filter((s: { playerId: string }) => s.playerId !== hana && s.playerId !== cara);
+    // 10 * 10 * 10 * 10 = 0.01% precise, rounds to 0.0%.
+    [10, 10, 10, 10].forEach((survivalPct, i) => doc.scores.push({ playerId: hana, questionIdx: i, survivalPct }));
+    // 10 * 10 * 10 * 15 = 0.015% precise — bigger, and still rounds to 0.0%.
+    [10, 10, 10, 15].forEach((survivalPct, i) => doc.scores.push({ playerId: cara, questionIdx: i, survivalPct }));
+    localStorage.setItem(`survival:game:${gameId}`, JSON.stringify(doc));
+
+    const standings = seenBy(backend, 'hana', gameId).standings!;
+    const [hanaRow, caraRow] = [
+      standings.find((s) => s.playerId === hana)!,
+      standings.find((s) => s.playerId === cara)!,
+    ];
+    expect(hanaRow.average).toBe(0);
+    expect(caraRow.average).toBe(0);
+    // Displayed identically, and still correctly ordered underneath it.
+    expect(standings.findIndex((s) => s.playerId === cara))
+      .toBeLessThan(standings.findIndex((s) => s.playerId === hana));
+
+    tab('cara'); await backend.vote(gameId, hana);
+    tab('hana'); await backend.vote(gameId, cara);
+    tab('dev'); await backend.vote(gameId, cara);
+    tab('hana'); await backend.advance(gameId); // → result
+
+    const winner = seenBy(backend, 'dev', gameId).winner!;
+    expect(winner).toHaveLength(1);
+    expect(winner[0].playerId).toBe(cara);
+  });
 });
 
 describe('the two warm-ups', () => {
