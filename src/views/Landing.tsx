@@ -36,13 +36,16 @@ const heroCast: SceneCharacter[] = HERO.map(([name, topper, state]) => ({
   away: name === 'Hiro',
 }));
 
+/** A fresh seed per visitor, so no two people arrive wearing the same face. */
+const randomSeed = () => Math.random().toString(36);
+
 export function Landing({ campfire }: { campfire: Campfire }) {
   const [mode, setMode] = useState<Mode>('choose');
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const [deckId, setDeckId] = useState(decks[0].id);
   const [themeId, setThemeId] = useState(themes[0].id);
-  const [look, setLook] = useState<CharacterLook>(() => lookFromSeed('campfire'));
+  const [look, setLook] = useState<CharacterLook>(() => lookFromSeed(randomSeed()));
 
   const theme = themeById(themeId);
 
@@ -59,12 +62,16 @@ export function Landing({ campfire }: { campfire: Campfire }) {
     // Once, on mount.
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Seeded once, not re-seeded per keystroke.
+  // Seeded once, from chance.
   //
-  // This used to rebuild the character on every letter of the name, so the
-  // first thing anyone saw was their costume flickering through eight
-  // different people as they typed. It read as broken because it looked
-  // broken. Pressing "Surprise me" is how you ask for a different one.
+  // Two failure modes have to be dodged at the same time. Seeding from the
+  // name rebuilt the character on every letter typed, so the first thing
+  // anyone saw was their costume flickering through eight different people.
+  // Seeding from a constant fixed the flicker and produced a room of
+  // identical strangers — six players joined a test game and every one of
+  // them was the same red vampire holding the same candle.
+  //
+  // So: random, once, at mount. "Surprise me" is how you ask for another.
 
   const preview = useMemo(
     () => [{ id: 'me', name: name.trim() || 'You', look, state: 'idle' as const }],
@@ -272,7 +279,7 @@ function CharacterPicker({
         </button>
         <button
           className="btn btn-sm"
-          onClick={() => onChange(lookFromSeed(Math.random().toString(36)))}
+          onClick={() => onChange(lookFromSeed(randomSeed()))}
         >
           Surprise me
         </button>
