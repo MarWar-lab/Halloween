@@ -20,13 +20,7 @@ import { OUTCOME_MAX, SEALED, worstOption } from './sealed';
 import { INTRO_QUESTIONS, QUESTIONS } from './questions';
 
 const root = join(import.meta.dirname, '../..');
-// The base migration seeded seven questions; a later one reseeds all nine at
-// their current positions (see its own header for the old→new mapping). This
-// is the authority now — read the latest seed, not the first one.
-const migration = readFileSync(
-  join(root, 'supabase/migrations/20260915140000_survival_arc.sql'),
-  'utf8',
-);
+const migrationsDir = join(root, 'supabase/migrations');
 
 interface SeedRow {
   questionIdx: number;
@@ -36,21 +30,43 @@ interface SeedRow {
   outcome: string;
 }
 
-/** The seed rows, read out of the migration exactly as Postgres would see them. */
+/**
+ * The seed rows, composed exactly the way Postgres actually gets them: every
+ * migration touching `survival_options`, in filename (chronological) order,
+ * each `insert ... on conflict do update` applied on top of the last.
+ *
+ * The first migration seeded seven questions; a later one reseeded all nine
+ * at their current positions; a later one still rewrote two of those in
+ * place without moving them. Reading only "the latest reseed" broke the
+ * moment that last kind of migration existed — a content-only update that
+ * touches existing rows without a wholesale reseed. Scanning every file that
+ * mentions the table, in order, is what keeps this test the authority no
+ * matter which shape the next migration takes.
+ */
 function seedRows(): SeedRow[] {
-  const seed = migration.split('insert into public.survival_options')[1] ?? '';
+  const byKey = new Map<string, SeedRow>();
+  const files = readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort();
   const row = /\((\d+),\s*(\d+),\s*'((?:[^']|'')*)',\s*(\d+),\s*\n\s*'((?:[^']|'')*)'\)/g;
-  const rows: SeedRow[] = [];
-  for (const m of seed.matchAll(row)) {
-    rows.push({
-      questionIdx: Number(m[1]),
-      optionIndex: Number(m[2]),
-      label: m[3].replace(/''/g, "'"),
-      survivalPct: Number(m[4]),
-      outcome: m[5].replace(/''/g, "'"),
-    });
+
+  for (const file of files) {
+    const sql = readFileSync(join(migrationsDir, file), 'utf8');
+    for (const stmt of sql.split(/;\s*(?=\n|$)/)) {
+      if (!/insert into\s+public\.survival_options/i.test(stmt)) continue;
+      for (const m of stmt.matchAll(row)) {
+        const seedRow: SeedRow = {
+          questionIdx: Number(m[1]),
+          optionIndex: Number(m[2]),
+          label: m[3].replace(/''/g, "'"),
+          survivalPct: Number(m[4]),
+          outcome: m[5].replace(/''/g, "'"),
+        };
+        // Last migration to touch a (question, option) pair wins — the same
+        // "on conflict do update" behaviour every one of these seeds uses.
+        byKey.set(`${seedRow.questionIdx}:${seedRow.optionIndex}`, seedRow);
+      }
+    }
   }
-  return rows;
+  return [...byKey.values()];
 }
 
 /** Every .ts/.tsx file under src/, so a new one cannot quietly opt out. */

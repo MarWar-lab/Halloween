@@ -75,27 +75,27 @@ export const SEALED: SealedOption[][] = [
     {
       survivalPct: 55,
       outcome:
-        'You clip two mirrors and a road sign, but you are through before the street fully seizes shut.',
+        'They turn out to be exactly what they looked like: exhausted, and grateful. No trouble, but the seat you were saving for someone else is gone.',
     },
     {
       survivalPct: 65,
       outcome:
-        'Slower, but the panic is all on the main road. You lose no distance to anything that matters.',
+        'The screening costs you time you did not have, but the person you let in stays calm, cooperative, and blessedly boring the rest of the way.',
     },
     {
       survivalPct: 70,
       outcome:
-        'The convoy clears everything ahead of it. You only have to keep up without anyone noticing you are there.',
+        'You do not look back. The guilt rides with you the whole way to the port, uninvited and unpaid for.',
     },
     {
       survivalPct: 50,
       outcome:
-        'The stranger takes the fuel happily and points you down a road that turns out to be a dead end.',
+        'The bus had already left by the time you sent them to it. You will not find out how that went.',
     },
     {
       survivalPct: 45,
       outcome:
-        'The roads never really clear. You lose two hours you did not have, and everyone else is already ahead of you in line.',
+        'The argument costs you time, and the person who wins the seat is not who you would have picked.',
     },
   ],
   [
@@ -183,27 +183,27 @@ export const SEALED: SealedOption[][] = [
     {
       survivalPct: 40,
       outcome:
-        'Fast, and exposed the entire way. Something gets a hand on your jacket; you shed it and keep moving.',
+        'They make it. So does everything close enough to hear you say it out loud.',
     },
     {
       survivalPct: 55,
       outcome:
-        'Slower, but you are never in the open for more than a few seconds at a time.',
+        'It buys you the real path, clean. Somewhere behind you, someone is following directions to nowhere.',
+    },
+    {
+      survivalPct: 50,
+      outcome:
+        'The radio goes quiet on its own eventually. You never find out if that was good news.',
     },
     {
       survivalPct: 45,
       outcome:
-        'The glass takes a piece out of your forearm on the way through. You are through, and bleeding.',
+        'The lie holds together right up until it does not, and by then you are already at the door.',
     },
     {
       survivalPct: 60,
       outcome:
-        'It works better than it has any right to. You walk straight past what used to be a crowd.',
-    },
-    {
-      survivalPct: 30,
-      outcome:
-        'You make it, technically. You will feel every part of this for days, if there turn out to be days left to feel it in.',
+        'One problem solved, permanently. You will think about that voice more than you expected to.',
     },
   ],
   [

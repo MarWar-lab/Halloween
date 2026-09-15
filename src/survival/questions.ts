@@ -152,13 +152,13 @@ export const QUESTIONS: Question[] = [
   {
     title: 'The Drive',
     setup:
-      'The neighbour is gone. You are on the road to the TWIN port, and the road is not cooperating — gridlock, improvised checkpoints, and a clock that is not on your side.',
+      'The road to the port is a crawl of brake lights. A family is banging on windows two cars over, begging anyone for room. You have exactly one open seat, and the gap in traffic will not stay open long.',
     choices: [
-      'Push through the gridlock on the shoulder',
-      'Abandon the car, go on foot through backstreets',
-      'Tuck in behind a military convoy and follow',
-      'Trade your fuel to a stranger for a guaranteed route',
-      'Wait it out in a parking garage',
+      'Open the door for the closest stranger',
+      'Only take someone who can prove they are clean',
+      'Speed up and pretend you did not see them',
+      'Point them toward a bus you saw idling back',
+      'Let them argue it out, take the winner',
     ],
   },
   {
@@ -201,13 +201,13 @@ export const QUESTIONS: Question[] = [
   {
     title: 'The Loading Dock',
     setup:
-      'Cache in hand, the stairwell to the roof is on the far side of the loading dock — and the loading dock is where the building was first breached. It has not emptied out since.',
+      'Halfway across the dock, a survivor radio crackles to life on the ground. Someone else is out there, asking for the fastest way to the stairwell. Answering might get them there. It also tells anything listening exactly where you are.',
     choices: [
-      'Sprint straight across the open dock floor',
-      'Hug the container stacks, one to the next',
-      'Climb over a stalled forklift, through a broken window',
-      'Drop a radio at the far end to draw them off',
-      'Grab a length of pipe and go loud',
+      'Give them the real route to the stairwell',
+      'Give them a decoy route instead',
+      'Stay silent and keep moving',
+      'Answer, but lie about how close it is',
+      'Smash the radio so you cannot answer again',
     ],
   },
   {
