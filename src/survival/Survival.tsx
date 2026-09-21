@@ -9,16 +9,23 @@
  * shared screen to open in a second tab. See src/survival/views/Player.tsx.
  */
 
-import { useEffect } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Join } from './views/Join';
 import { Player } from './views/Player';
 import { useSurvival } from './state/useSurvival';
 import { isLocalPlay } from './net';
+import { BunkerMap } from './scene/BunkerMap';
+import { computeTension, tensionInputFromSnapshot } from './tension';
 import './survival.css';
 
 export default function Survival() {
   const survival = useSurvival();
   const { session, snapshot } = survival;
+
+  const tension = useMemo(
+    () => (snapshot ? computeTension(tensionInputFromSnapshot(snapshot)) : 0),
+    [snapshot],
+  );
 
   // index.html carries the other game's title, and a room code read off a
   // browser tab is one of the ways people find their way back in.
@@ -30,6 +37,7 @@ export default function Survival() {
 
   return (
     <div className="survival">
+      {snapshot && <BunkerMap playerCount={snapshot.players.length} tension={tension} />}
       {session && survival.error && <p className="error" role="alert">{survival.error}</p>}
       {!session ? (
         <Join survival={survival} />

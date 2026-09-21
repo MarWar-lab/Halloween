@@ -118,6 +118,8 @@ migration, and asserts that nothing but the local backend imports it.
 | `src/survival/pacing.ts` | timing/pacing for the arc |
 | `src/survival/scale.ts` | sizing the game to who turned up |
 | `src/survival/debrief.ts` | the private per-question recap shown before the plea composer |
+| `src/survival/tension.ts` | the bunker map's one input — a 0-1 value built only from already-public snapshot fields |
+| `src/survival/scene/BunkerMap.tsx` | the ambient node-grid backdrop behind every screen, driven by tension |
 | `src/lib/` | shared infra: Supabase client, anonymous auth, server clock sync |
 | `supabase/migrations/` | schema, RLS policies and the RPCs that own every state change |
 | `scripts/check-migrations.mjs` | PGlite: applies every migration, plays a round, re-applies |
