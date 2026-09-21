@@ -140,14 +140,19 @@ function Task({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
         <div className="locked">
           {question.clip && <Clip src={question.clip} />}
           <p className="eyebrow">Choice locked</p>
-          <p className="big" aria-label={`${onATeam ? 'Your team chose' : 'You chose'} ${OPTION_LETTERS[mine.optionIndex]}`}>
-            {OPTION_LETTERS[mine.optionIndex]}
+          {/* Letter and choice sit in one row, not stacked — the letter is
+              decorative (the choice text already says what it means), and
+              nothing here is boxed in its own bordered paragraph anymore. */}
+          <div className="locked-choice">
+            <span className="big" aria-hidden>{OPTION_LETTERS[mine.optionIndex]}</span>
+            <span className="sr-only">{onATeam ? 'Your team chose' : 'You chose'}</span>
+            <span className="locked-choice-text">{question.choices[mine.optionIndex]}</span>
+          </div>
+          <p className="muted" style={{ fontSize: '0.85rem' }}>
+            {onATeam
+              ? 'Locked in by whoever on your team tapped first.'
+              : isWarmup ? 'Waiting on the room.' : 'Calculating survival probability.'}
           </p>
-          <p className="muted">{question.choices[mine.optionIndex]}</p>
-          <p className="muted">
-            {isWarmup ? 'Waiting on the room.' : 'Calculating survival probability.'}
-          </p>
-          {onATeam && <p className="muted" style={{ fontSize: '0.8rem' }}>Locked in by whoever on your team tapped first.</p>}
           <ManifestLine key={game.questionIdx} question={question} snapshot={snapshot} questionIdx={game.questionIdx} />
           <Waiting ids={snapshot.answeredPlayerIds} players={players} verb="chosen" />
           <Exchange survival={survival} snapshot={snapshot} me={me} />
