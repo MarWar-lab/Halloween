@@ -1,20 +1,12 @@
 /**
  * Look at what the build actually emitted.
  *
- * This exists because of one bug that got all the way to production. The entry
- * used to read:
- *
- *   lazy(() => isSurvival ? import('./survival/Survival') : import('./App'))
- *
- * The bundler reads an import() call site to work out which files that chunk
- * needs, and a ternary gives it two answers. It stapled App.css to the entry —
- * so Campfire's stylesheet loaded on every page — and emitted survival.css as a
- * chunk that nothing referenced, so it never loaded at all. The deployed
- * survival screen rendered in Campfire's colours.
- *
- * Types passed. Tests passed. Lint passed. The build printed the orphaned file
- * on its own summary line and said nothing was wrong. Only opening the deployed
- * page found it, which is the most expensive place to find anything.
+ * This used to guard a two-game deployment (Campfire + The Last Screen
+ * Standing) against a ternary-inside-lazy() bug that stapled one game's
+ * stylesheet onto every page and orphaned the other's. Campfire has since
+ * been pulled from the site (its code lives in archive/campfire/, unbuilt),
+ * so there is only one game and one stylesheet — this just checks that it's
+ * actually reachable from the emitted HTML/JS.
  *
  *   node scripts/check-bundle.mjs
  */
@@ -56,18 +48,6 @@ for (const style of styles) {
   const referenced = code.includes(style);
   check(`${style} is reachable`, linked || referenced,
     linked ? 'linked from index.html' : referenced ? 'loaded by a chunk' : 'ORPHANED');
-}
-
-console.log('\n=== the two games keep their stylesheets apart ===');
-
-const gameStyles = styles.filter((f) => /^(App|Survival)-/.test(f));
-check('both games emit their own stylesheet', gameStyles.length === 2,
-  gameStyles.join(', ') || 'none found');
-
-// index.html must not hard-link either game's CSS: whichever it linked would
-// load on both pages, and the generic class names would collide.
-for (const style of gameStyles) {
-  check(`${style} is not forced onto every page`, !html.includes(style));
 }
 
 console.log('\n=== production keeps the survival answer table off the client ===');

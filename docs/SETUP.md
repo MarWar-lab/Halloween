@@ -1,4 +1,4 @@
-# Setting up Campfire's backend
+# Setting up the backend
 
 About fifteen minutes, all in a browser. You do this part because it involves
 keys and passwords, which I don't handle.
@@ -10,7 +10,7 @@ When you're done, tell me and I'll verify the schema against the live project.
 ## 1. Create the Supabase project
 
 1. Go to [supabase.com/dashboard](https://supabase.com/dashboard) and sign in.
-2. **New project**. Name it `campfire`.
+2. **New project**. Name it whatever you like.
 3. Choose a **database password** — save it in your password manager. You won't
    need it for this app, but you will need it if you ever use the CLI.
 4. Pick the region closest to most of your team (**Frankfurt** or **Ireland** for
