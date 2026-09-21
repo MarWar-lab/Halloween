@@ -22,10 +22,12 @@ import type {
   Plea,
   RevealRow,
   Seat,
+  SeatPath,
   Snapshot,
   Standing,
   Vote,
 } from '../types';
+import { seatsFor } from '../types';
 import { SurvivalError, type SurvivalBackend } from './types';
 
 interface GameRow {
@@ -256,7 +258,7 @@ export class SupabaseSurvivalBackend implements SurvivalBackend {
       if (error) fail('Could not seat the helicopter.', error.message);
       seats = (data ?? []).map(
         (r: {
-          player_id: string; name: string; seat: number; path: 'escape' | 'vote';
+          player_id: string; name: string; seat: number; path: SeatPath;
           votes: number; average: number; solve_order: number | null; contested: boolean;
         }) => ({
           playerId: r.player_id, name: r.name, seat: r.seat, path: r.path,
@@ -294,6 +296,10 @@ export class SupabaseSurvivalBackend implements SurvivalBackend {
       reveal,
       standings,
       seats,
+      // Derived from the roster rather than fetched: survival_seats already
+      // agrees with seatsFor, and a second round trip for one integer that
+      // both sides compute the same way is a round trip that can disagree.
+      seatCount: seatsFor((playerRows ?? []).length),
       clue,
       clueSeer,
       escapedPlayerIds: progress?.escaped ?? [],

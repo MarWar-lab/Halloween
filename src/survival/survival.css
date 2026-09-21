@@ -527,3 +527,21 @@
 .survival .phone p, .survival .board-row, .survival .reveal-row, .survival .recap-row,
 .survival .notepad, .survival .transmission { overflow-wrap: anywhere; }
 .survival > .error { flex-shrink: 0; margin: 0.5rem 1rem; }
+
+/*
+ * The extraction code, once it no longer matters.
+ *
+ * Wide tracking and a big size because this is the answer to a puzzle the
+ * room has been carrying all night — it should read the way a combination
+ * reads, not the way a sentence does.
+ */
+.survival .big-code {
+  font-size: clamp(2rem, 14vw, 3rem);
+  letter-spacing: 0.4em;
+  /* The tracking is applied to the right of each glyph, including the last,
+     which pushes the run visibly off-centre without this. */
+  text-indent: 0.4em;
+  text-align: center;
+  color: var(--phosphor);
+  margin: 0.5rem 0;
+}

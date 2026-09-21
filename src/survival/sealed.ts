@@ -10,6 +10,8 @@
  * Local play is available in development or an explicit local-only build.
  */
 
+import { DARK_CHOICES } from './questions';
+
 export interface SealedOption {
   survivalPct: number;
   outcome: string;
@@ -271,12 +273,29 @@ export const SEALED: SealedOption[][] = [
  */
 export const OUTCOME_MAX = 160;
 
-/** The lowest-survival move on a question — what the game picks for you. */
+/**
+ * The move the game picks for anyone who stayed quiet, or who joined after a
+ * question closed.
+ *
+ * Mirrors `survival_worst_option` key for key: `ruthless asc, survival_pct
+ * asc, option_index asc`. The first key is the one that matters and the one
+ * this used to be missing. A dark option is often the *best*-scoring move on
+ * its round — that is what makes the trap real for anyone optimising on
+ * percentage alone — so sorting on percentage first hands a silent player a
+ * ruthless move on three of the nine questions. `marksOf` filters
+ * `autoAssigned`, so it never cost anybody a disqualification, but it did
+ * quietly score them differently in local play than in production, which is
+ * the most dangerous class of bug this file can have.
+ */
 export const worstOption = (questionIdx: number): number => {
   const moves = SEALED[questionIdx];
+  const dark = DARK_CHOICES[questionIdx] ?? [];
+  const rank = (i: number): [number, number, number] =>
+    [dark.includes(i) ? 1 : 0, moves[i].survivalPct, i];
   let worst = 0;
   for (let i = 1; i < moves.length; i += 1) {
-    if (moves[i].survivalPct < moves[worst].survivalPct) worst = i;
+    const [a, b] = [rank(i), rank(worst)];
+    if (a[0] !== b[0] ? a[0] < b[0] : a[1] !== b[1] ? a[1] < b[1] : a[2] < b[2]) worst = i;
   }
   return worst;
 };

@@ -802,6 +802,27 @@ check('the disqualified vote leader holds no seat either, despite the votes she 
 check('the seats that were earnable went to eligible people',
   seats.every((s) => s.player_id === eDev.id || s.player_id === eLee.id || s.path === 'vote'));
 
+// ── the three paths, and a chopper sized for the room ────────────────────
+// Both backends have to agree on this table or a silent player is seated
+// differently in local play than in production. src/survival/scale.test.ts
+// asserts the same numbers against seatsFor().
+const seatTable = [[5, 3], [6, 3], [8, 3], [12, 3], [16, 4], [20, 5], [24, 6], [3, 1], [4, 2], [0, 0]];
+for (const [players, expected] of seatTable) {
+  const got = (await db.query(`select survival_seats_for($1) as n`, [players])).rows[0].n;
+  check(`survival_seats_for(${players}) is ${expected}, as seatsFor says`, got === expected, `got ${got}`);
+}
+
+check('no path claims the whole chopper on its own',
+  new Set(seats.map((s) => s.path)).size > 1 || seats.length <= 1,
+  seats.map((s) => `${s.name}:${s.path}`).join(', '));
+check('every seat names one of the three paths',
+  seats.every((s) => ['escape', 'record', 'vote'].includes(s.path)),
+  seats.map((s) => s.path).join(', '));
+check('the room never seats more people than it has seats for',
+  seats.filter((s) => !s.contested).length <= (await db.query(
+    `select survival_seat_count($1) as n`, [egame.id])).rows[0].n,
+  JSON.stringify(seats.map((s) => [s.name, s.seat, s.path, s.contested])));
+
 const keyReveal = (await db.query(`select * from survival_key_reveal($1)`, [egame.id])).rows[0];
 check('the code is only ever readable at result, and matches the derived one',
   keyReveal.code === key.code);
@@ -999,12 +1020,20 @@ await be(pairRows[1].user_id);
 const solved = (await db.query(`select * from survival_escape($1, $2)`, [tgame.id, teamCode])).rows[0];
 check('the correct code is accepted', solved.correct === true, JSON.stringify(solved));
 
-const bothEscaped = (await db.query(
+// The team solved it together — shared clues, one keypad, and the cooldown
+// above was started by the OTHER member's wrong guess. But the seat belongs
+// to whoever states the code: an escape path that seats whole teams takes
+// every seat the room is playing for, which is what left the nine moral
+// rounds and the tribunal deciding nothing.
+const escapedRows = (await db.query(
   `select player_id, solve_order from survival_escapes where game_id = $1`, [tgame.id],
 )).rows;
-check('cracking it seats the WHOLE team at once, not just whoever typed it',
-  bothEscaped.length === 2 && bothEscaped.every((r) => r.solve_order === bothEscaped[0].solve_order),
-  JSON.stringify(bothEscaped));
+check('cracking it seats whoever stated the code, not their whole team',
+  escapedRows.length === 1 && escapedRows[0].player_id === pairRows[1].player_id,
+  JSON.stringify(escapedRows));
+check("the teammate who did not type it keeps the record and the vote instead",
+  !escapedRows.some((r) => r.player_id === pairRows[0].player_id),
+  JSON.stringify(escapedRows));
 
 console.log('\n=== re-applying over a database that already has a game in it ===');
 // This is the real situation on the hosted project: 0001 and 0002 were

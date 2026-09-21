@@ -11,7 +11,7 @@
  */
 
 import { useEffect, useRef, useState } from 'react';
-import { OPTION_LETTERS, SEATS, survivalOddsOf, type Snapshot } from '../types';
+import { OPTION_LETTERS, survivalOddsOf, type Snapshot } from '../types';
 import {
   EXTRACTION,
   EXTRACTION_BRIEF,
@@ -220,21 +220,25 @@ function Task({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
 
   if (game.phase === 'tribunal') {
     const escaped = new Set(snapshot.escapedPlayerIds);
-    const votingIsMoot = snapshot.escapedPlayerIds.length >= SEATS;
+    // The vote has its own budgeted seat now, so a room where several people
+    // cracked the code no longer walks everybody through a tribunal that
+    // cannot change anything. The only way it is still moot is if there is
+    // literally nobody left to vote for.
+    const votingIsMoot = players.every((p) => p.id === me || escaped.has(p.id));
     const voted = snapshot.votes.find((v) => v.voterId === me);
 
     return (
       <>
         <header>
           <p className="eyebrow">The tribunal</p>
-          <h2>{SEATS} seats. Make the case for what is left.</h2>
+          <h2>{snapshot.seatCount} seats. Make the case for what is left.</h2>
         </header>
         <Board snapshot={snapshot} />
         {escaped.has(me) ? (
           <Aboard snapshot={snapshot} me={me} />
         ) : votingIsMoot ? (
           <p className="talk">
-            All {SEATS} seats are already taken by the extraction code. There is nothing to vote on.
+            Everybody still standing is already aboard. There is nothing left to vote on.
           </p>
         ) : voted ? (
           <div className="locked">
@@ -276,8 +280,30 @@ function Task({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
       <Board snapshot={snapshot} />
       {bumpedLine(snapshot)}
       {contestedLine(snapshot)}
+      <KeyReveal snapshot={snapshot} />
       <Debrief snapshot={snapshot} />
     </>
+  );
+}
+
+/**
+ * What the code actually was, and how it was built.
+ *
+ * The backend has computed this at `result` since the extraction puzzle
+ * shipped — `survival_key_reveal` raises before then, and that refusal is
+ * part of the seal — and no screen has ever rendered it. So a room that did
+ * not crack the code spent the night assembling a manifest and then never
+ * found out what it added up to, which is the one piece of information
+ * everybody wants the moment it stops mattering.
+ */
+function KeyReveal({ snapshot }: { snapshot: Snapshot }) {
+  if (!snapshot.keyReveal) return null;
+  return (
+    <div className="transmission">
+      <p className="eyebrow">The manifest, unsealed</p>
+      <p className="big-code">{snapshot.keyReveal.code}</p>
+      <p className="muted">{snapshot.keyReveal.recipe}</p>
+    </div>
   );
 }
 
@@ -303,27 +329,43 @@ function Debrief({ snapshot }: { snapshot: Snapshot }) {
   );
 }
 
-/** 0 to SEATS seats, won two different ways — the copy has to say which. */
 /** "A" / "A and B" / "A, B and C" — shared by every line that lists seat-holders by name. */
 const joinNames = (names: string[]): string =>
   names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
 
+/**
+ * Who got out, by which of the three paths, and what the room failed to do.
+ *
+ * The last clause is the point. A seat won by the vote when nobody cracked
+ * the code is not the same result as a seat won by the vote alongside one —
+ * it means the room never assembled the manifest, which is a thing the room
+ * did together and should be told about together. Without it the ending is
+ * only ever a list of who won.
+ */
 const seatsLine = (snapshot: Snapshot): string => {
   const seats = snapshot.seats ?? [];
-  if (seats.length === 0) return 'The chopper leaves empty';
-  const byCode = seats.filter((s) => s.path === 'escape').map((s) => s.name);
-  const byVote = seats.filter((s) => s.path === 'vote').map((s) => s.name);
+  if (seats.length === 0) return 'The chopper leaves empty. Nobody got out.';
 
-  let line: string;
-  if (byCode.length && byVote.length) {
-    line = `${joinNames(byCode)} had the code. The room voted ${joinNames(byVote)} aboard`;
-  } else if (byCode.length) {
-    line = seats.length === 1 ? `${joinNames(byCode)} read the port the code` : `${joinNames(byCode)} read the port the code and walked on`;
-  } else {
-    line = `The room voted ${joinNames(byVote)} aboard`;
-  }
-  const empty = SEATS - seats.length;
-  return empty > 0 ? `${line} — ${empty} seat${empty === 1 ? '' : 's'} leave${empty === 1 ? 's' : ''} empty` : line;
+  const named = (path: string) => seats.filter((s) => s.path === path).map((s) => s.name);
+  const byCode = named('escape');
+  const byRecord = named('record');
+  const byVote = named('vote');
+
+  const clauses: string[] = [];
+  if (byCode.length) clauses.push(`${joinNames(byCode)} read the port the code`);
+  if (byRecord.length) clauses.push(`${joinNames(byRecord)} survived the night on the numbers`);
+  if (byVote.length) clauses.push(`the room voted ${joinNames(byVote)} aboard`);
+
+  // The clauses are written lower-case so they read as a list wherever they
+  // land; whichever one comes first has to start the sentence.
+  const joined = clauses.join('. ');
+  const line = joined.charAt(0).toUpperCase() + joined.slice(1);
+  const empty = snapshot.seatCount - seats.filter((s) => !s.contested).length;
+  const failures: string[] = [];
+  if (!byCode.length) failures.push('nobody cracked the code');
+  if (empty > 0) failures.push(`${empty} seat${empty === 1 ? '' : 's'} left empty`);
+
+  return failures.length ? `${line} — ${failures.join(', ')}` : line;
 };
 
 /**
@@ -338,10 +380,13 @@ function contestedLine(snapshot: Snapshot) {
   if (contested.length === 0) return null;
   const cause = contested[0].path === 'escape'
     ? 'cracked the code together — there was no room for all of them'
-    : 'tied for the last seat, all the way down, with nothing left to break it';
+    : contested[0].path === 'record'
+      ? 'came through the night on identical odds, with nothing left to separate them'
+      : 'tied for the last seat, all the way down, with nothing left to break it';
   return (
     <p className="talk" style={{ borderColor: 'var(--amber)' }}>
-      {joinNames(contested.map((s) => s.name))} {cause}. Seat {SEATS} is shared, not decided.
+      {joinNames(contested.map((s) => s.name))} {cause}. Seat {contested[0].seat} is shared,
+      not decided.
     </p>
   );
 }

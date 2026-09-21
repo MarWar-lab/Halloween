@@ -52,6 +52,29 @@ interface SeedRow {
  * mentions the table, in order, is what keeps this test the authority no
  * matter which shape the next migration takes.
  */
+/**
+ * The ORDER BY that `survival_worst_option` actually ships with, from the
+ * last migration that defines it.
+ *
+ * Read rather than restated, for the same reason `seedRows` reads the seed:
+ * a copy of a rule is a rule that drifts.
+ */
+function worstOptionOrderBy(): string[] {
+  const files = readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort();
+  let clause: string | null = null;
+  for (const file of files) {
+    const sql = readFileSync(join(migrationsDir, file), 'utf8');
+    const body = /function\s+public\.survival_worst_option[\s\S]*?\$\$([\s\S]*?)\$\$/g;
+    let found: RegExpExecArray | null;
+    while ((found = body.exec(sql)) !== null) {
+      const order = /order\s+by\s+([^\n]+)/i.exec(found[1]);
+      if (order) clause = order[1].trim().replace(/\s+/g, ' ');
+    }
+  }
+  if (clause === null) throw new Error('No migration defines survival_worst_option with an ORDER BY');
+  return clause.split(',').map((key) => key.trim());
+}
+
 function seedRows(): SeedRow[] {
   const byKey = new Map<string, SeedRow>();
   const files = readdirSync(migrationsDir).filter((f) => f.endsWith('.sql')).sort();
@@ -146,15 +169,55 @@ describe('the sealed values', () => {
     for (const q of QUESTIONS) expect(q.setup).not.toMatch(duration);
   });
 
-  it('agrees with the database about which move is worst', () => {
-    // worstOption drives the local backend's auto-assignment; the SQL has its
-    // own copy in survival_worst_option. They pick by lowest percentage, then
-    // by lowest index, and a disagreement would punish different people in
-    // the two backends for the same silence.
+  it('picks the worst move by the same keys the database sorts on', () => {
+    // This test used to recompute worstOption's own rule from SEALED and
+    // compare it against worstOption — a tautology that passed happily while
+    // the two backends disagreed on three of the nine questions. It now
+    // reads the ORDER BY out of the migration that actually ships and
+    // applies it to the mirrored data, so the SQL is the authority here the
+    // same way it is for the percentages themselves.
+    const keys = worstOptionOrderBy();
+
+    // Each key names a column and a direction. Teach the map before adding
+    // one to the SQL; an unknown key fails loudly rather than being ignored,
+    // which is how a silent divergence would get back in.
+    const columns: Record<string, (q: number, i: number) => number> = {
+      ruthless: (q, i) => ((DARK_CHOICES[q] ?? []).includes(i) ? 1 : 0),
+      survival_pct: (q, i) => SEALED[q][i].survivalPct,
+      option_index: (_q, i) => i,
+    };
+
+    for (const key of keys) {
+      const [column, direction] = key.split(/\s+/);
+      expect(columns).toHaveProperty(column);
+      // Every key is ascending today, and a descending one would invert the
+      // meaning of "worst" without touching this file. Catch it here.
+      expect(direction).toBe('asc');
+    }
+
     for (let q = 0; q < SEALED.length; q += 1) {
-      const lowest = Math.min(...SEALED[q].map((m) => m.survivalPct));
-      const expected = SEALED[q].findIndex((m) => m.survivalPct === lowest);
-      expect(worstOption(q)).toBe(expected);
+      const byDatabaseOrder = SEALED[q]
+        .map((_, i) => i)
+        .sort((a, b) => {
+          for (const key of keys) {
+            const read = columns[key.split(/\s+/)[0]];
+            const delta = read(q, a) - read(q, b);
+            if (delta !== 0) return delta;
+          }
+          return 0;
+        });
+      expect(worstOption(q)).toBe(byDatabaseOrder[0]);
+    }
+  });
+
+  it('never hands a silent player a ruthless move', () => {
+    // A dark option is frequently the highest-scoring move on its round —
+    // that is exactly what makes the trap real for anyone optimising on
+    // percentage alone — so "lowest percentage" is not the same rule as
+    // "worst move", and picking on percentage first walks a player who said
+    // nothing into somebody else's misfortune.
+    for (let q = 0; q < SEALED.length; q += 1) {
+      expect(DARK_CHOICES[q] ?? []).not.toContain(worstOption(q));
     }
   });
 });

@@ -17,7 +17,8 @@
  */
 
 import { SEALED, worstOption } from '../sealed';
-import { CHOICE_QUESTIONS, SEATS, survivalOddsOf, survivalOddsPrecise } from '../types';
+import { CHOICE_QUESTIONS, seatsFor, survivalOddsOf, survivalOddsPrecise } from '../types';
+import { teamSizes } from '../scale';
 import type {
   Answer,
   Game,
@@ -26,6 +27,7 @@ import type {
   Plea,
   RevealRow,
   Seat,
+  SeatPath,
   Snapshot,
   Standing,
   Vote,
@@ -446,9 +448,9 @@ export class LocalSurvivalBackend implements SurvivalBackend {
       throw new SurvivalError('You are already aboard.', 'already_escaped');
     }
 
-    // Consensus mode shares the whole keypad with your team: the same
-    // cooldown (any teammate's wrong guess starts it for all of you), and —
-    // if the code is right — the same seats, all at once.
+    // Consensus mode shares the whole keypad with your team: one cooldown,
+    // one attempt count, any teammate's wrong guess resetting it for all of
+    // you. What it no longer shares is the seat — see below.
     const team = teamOf(doc, me);
     const teamAttempts = doc.attempts.filter((a) => team.memberIds.includes(a.playerId));
     const last = teamAttempts.reduce<number | null>((latest, a) => (latest === null || a.at > latest ? a.at : latest), null);
@@ -463,16 +465,25 @@ export class LocalSurvivalBackend implements SurvivalBackend {
     const correct = normalized.length === EXTRACTION.length && normalized === doc.keyCode;
     doc.attempts.push({ playerId: me, at: Date.now(), correct });
     if (correct) {
-      // One shared batch number for the whole team, not one row each with
-      // its own — computeSeats() groups escapees by this number precisely so
-      // a team that solves it together either all get a seat or all share
-      // the last one, never an arbitrary subset picked by insertion order.
-      const batchOrder = 1 + new Set(doc.escapes.map((e) => e.solveOrder)).size;
-      const now = Date.now();
-      for (const playerId of team.memberIds) {
-        if (doc.escapes.some((e) => e.playerId === playerId)) continue;
-        doc.escapes.push({ playerId, solveOrder: batchOrder, at: now });
-      }
+      // The seat belongs to whoever states the code, not to their whole
+      // team — a reversal of how this worked when there were three seats and
+      // teams were pairs.
+      //
+      // It has to be. The escape path is now one of three that share a
+      // scaled seat count: at twelve players that is three seats, and a team
+      // of four boarding together takes every one of them, which leaves the
+      // nine moral rounds and the entire tribunal deciding nothing. The same
+      // collision in reverse — budgeting escape a single seat — marked every
+      // solving team `contested`, turning a rare "we could not split this
+      // honestly" outcome into the normal case.
+      //
+      // So the team still solves it together: shared clue ownership, one
+      // keypad, one cooldown, one attempt count, and the debrief credits
+      // everyone who put a fragment in. Only the walk through the door is
+      // individual, exactly as the pilot states it — anyone who can state
+      // the code walks on now. Which member types it is the last thing a
+      // team has to decide together, and it is a decision worth having.
+      doc.escapes.push({ playerId: me, solveOrder: doc.escapes.length + 1, at: Date.now() });
     }
     writeDoc(doc);
     this.announce(gameId);
@@ -518,75 +529,115 @@ interface Contender {
 }
 
 /**
- * Two parallel win paths, computed once from the frozen state at `result`.
+ * Three ways onto the chopper, in the order they claim seats.
  *
- * Path A (the race): clean escapees, in solve order, fill seats first — a
- * disqualified solver is skipped, not reserved; the seat passes to the next
- * solver. A team escapes as one batch sharing a single solve order (see
- * `escape()`), so Path A can tie too, not just Path B: a batch that fits
- * entirely gets consecutive seats, and a batch bigger than the room left
- * shares the last seat and is marked `contested` — the same handling Path B
- * already used for an unsplittable vote tie, just grouped on solve order
- * instead of on votes. Path B (the vote): whatever seats are left fill from
- * the vote tally among clean non-escapees, tied on the *unrounded* odds.
+ * The night used to have two, and one of them barely counted: escapees filled
+ * seats in solve order, then the vote filled whatever was left. Survival odds
+ * — the thing nine rounds of moral choices actually produce — entered the
+ * arithmetic at exactly one place, as a tie-break between two players on
+ * equal votes. So the nine questions decided nothing, and a room where three
+ * people cracked the code skipped the tribunal entirely.
+ *
+ * Now each path claims its own share, so every phase of the night is load
+ * bearing: the puzzles win `escape`, the nine questions win `record`, and the
+ * plea wins `vote`.
  */
-function computeSeats(contenders: Contender[]): Seat[] {
-  const clean = (c: Contender) => !c.disqualified;
+const SEAT_PATHS: SeatPath[] = ['escape', 'record', 'vote'];
 
-  const escapedPool = contenders
-    .filter((c) => c.solveOrder !== null && clean(c))
-    .sort((a, b) => (a.solveOrder as number) - (b.solveOrder as number) || a.name.localeCompare(b.name));
+/**
+ * Who is still in the running on a given path, best first.
+ *
+ * An escapee is out of the running for the other two: they already have a
+ * seat, and leaving them in `record` would have the best player take two.
+ */
+function queueFor(path: SeatPath, contenders: Contender[], taken: Set<string>): Contender[] {
+  const open = contenders.filter((c) => !c.disqualified && !taken.has(c.playerId));
+  if (path === 'escape') {
+    return open
+      .filter((c) => c.solveOrder !== null)
+      .sort((a, b) => (a.solveOrder as number) - (b.solveOrder as number) || a.name.localeCompare(b.name));
+  }
+  // Not filtered on `solveOrder` — `taken` already holds anybody who has a
+  // seat, and somebody whose team solved it but who did not type the code is
+  // still in the running here.
+  const unescaped = open;
+  if (path === 'record') {
+    // The unrounded figure, never the displayed one: two players can share a
+    // rounded "64.0%" without being tied, and a seat decided on that would
+    // call a real difference a draw.
+    return unescaped.sort((a, b) => b.precise - a.precise || a.name.localeCompare(b.name));
+  }
+  return unescaped.sort(
+    (a, b) => b.votes - a.votes || b.precise - a.precise || a.name.localeCompare(b.name),
+  );
+}
 
+/**
+ * The head of the queue plus everybody genuinely level with them.
+ *
+ * Each path ties on its own terms — a whole team shares one `solveOrder`, a
+ * record ties on the precise odds, a vote ties on the count and then on the
+ * odds behind it.
+ */
+function tiedAtHead(path: SeatPath, queue: Contender[]): Contender[] {
+  const head = queue[0];
+  if (path === 'escape') return queue.filter((c) => c.solveOrder === head.solveOrder);
+  if (path === 'record') return queue.filter((c) => c.precise === head.precise);
+  return queue.filter((c) => c.votes === head.votes && c.precise === head.precise);
+}
+
+/**
+ * Seats, computed once from the frozen state at `result`.
+ *
+ * Each path gets a budget — `teamSizes` splits the seats three ways, giving
+ * the remainder to the earlier paths — and then a second pass hands whatever
+ * a path could not fill to the others, so a room where nobody cracked the
+ * code does not fly out with empty seats for a boring reason. That
+ * redistribution is itself the story: "nobody solved it, so the room chose
+ * all five" is a result worth reading out.
+ *
+ * A group too big for the seats its path has left shares the last of them and
+ * is marked `contested` — but only that path stops. It used to end the whole
+ * allocation, which under three paths would let one large escaping team block
+ * the other two entirely.
+ */
+function computeSeats(contenders: Contender[], seatCount: number): Seat[] {
   const seats: Seat[] = [];
-  let escSeatNo = 0;
-  let escIdx = 0;
-  while (escIdx < escapedPool.length && escSeatNo < SEATS) {
-    const head = escapedPool[escIdx];
-    const batch = escapedPool.filter((c) => c.solveOrder === head.solveOrder);
-    const contested = batch.length > SEATS - escSeatNo;
-    for (const c of batch) {
-      if (!contested) escSeatNo += 1;
-      seats.push({
-        playerId: c.playerId,
-        name: c.name,
-        seat: contested ? SEATS : escSeatNo,
-        path: 'escape',
-        votes: c.votes,
-        average: c.average,
-        solveOrder: c.solveOrder,
-        contested,
-      });
-    }
-    escIdx += batch.length;
-    if (contested) break;
-  }
+  const taken = new Set<string>();
+  let seatNo = 0;
 
-  const pool = contenders
-    .filter((c) => c.solveOrder === null && clean(c))
-    .sort((a, b) => b.votes - a.votes || b.precise - a.precise || a.name.localeCompare(b.name));
+  const claim = (path: SeatPath, budget: number) => {
+    let spent = 0;
+    while (spent < budget && seatNo < seatCount) {
+      const queue = queueFor(path, contenders, taken);
+      if (queue.length === 0) return;
+      const group = tiedAtHead(path, queue);
+      const room = Math.min(budget - spent, seatCount - seatNo);
+      const contested = group.length > room;
 
-  let seatNo = seats.length;
-  let i = 0;
-  while (i < pool.length && seatNo < SEATS) {
-    const head = pool[i];
-    const tiedGroup = pool.filter((c) => c.votes === head.votes && c.precise === head.precise);
-    const contested = tiedGroup.length > SEATS - seatNo;
-    for (const c of tiedGroup) {
-      if (!contested) seatNo += 1;
-      seats.push({
-        playerId: c.playerId,
-        name: c.name,
-        seat: contested ? SEATS : seatNo,
-        path: 'vote',
-        votes: c.votes,
-        average: c.average,
-        solveOrder: null,
-        contested,
-      });
+      if (contested) seatNo += room;
+      for (const c of group) {
+        if (!contested) seatNo += 1;
+        taken.add(c.playerId);
+        seats.push({
+          playerId: c.playerId,
+          name: c.name,
+          seat: seatNo,
+          path,
+          votes: c.votes,
+          average: c.average,
+          solveOrder: path === 'escape' ? c.solveOrder : null,
+          contested,
+        });
+      }
+      if (contested) return;
+      spent += group.length;
     }
-    i += tiedGroup.length;
-    if (contested) break;
-  }
+  };
+
+  const budgets = teamSizes(seatCount, SEAT_PATHS.length);
+  SEAT_PATHS.forEach((path, i) => claim(path, budgets[i] ?? 0));
+  for (const path of SEAT_PATHS) claim(path, seatCount - seatNo);
 
   return seats;
 }
@@ -676,7 +727,8 @@ function snapshotFor(doc: Doc, me: string | null): Snapshot {
       ? contenders.map(({ playerId, name, marks, disqualified }) => ({ playerId, name, marks, disqualified }))
       : null;
 
-  const seats = game.phase === 'result' ? computeSeats(contenders) : null;
+  const seatCount = seatsFor(doc.players.length);
+  const seats = game.phase === 'result' ? computeSeats(contenders, seatCount) : null;
 
   const escapedPlayerIds = [...doc.escapes]
     .sort((a, b) => a.solveOrder - b.solveOrder)
@@ -735,6 +787,7 @@ function snapshotFor(doc: Doc, me: string | null): Snapshot {
     reveal,
     standings,
     seats,
+    seatCount,
     clue,
     clueSeer,
     escapedPlayerIds,

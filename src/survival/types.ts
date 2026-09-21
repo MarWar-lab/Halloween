@@ -12,8 +12,21 @@ export type Phase = 'lobby' | 'briefing' | 'running' | 'plea' | 'tribunal' | 're
 /** How many questions are answered by choosing a move. The plea is separate. */
 export const CHOICE_QUESTIONS = 9;
 
-/** Seats on the last chopper. Three, and they are not all won the same way. */
-export const SEATS = 3;
+/**
+ * The three ways onto the last chopper.
+ *
+ * `escape` is the extraction code, `record` the best survival odds, `vote`
+ * the room's choice at the tribunal. One per phase of the night, so none of
+ * the three is decoration — see `computeSeats` for how they share the seats.
+ */
+export type SeatPath = 'escape' | 'record' | 'vote';
+
+/**
+ * How many seats a room of this size plays for — see `seatsFor` in
+ * `./scale`. It used to be a flat three, which made a five-person tribunal
+ * trivial and a twenty-person one pointless.
+ */
+export { seatsFor } from './scale';
 
 export interface Game {
   id: string;
@@ -97,14 +110,14 @@ export interface Standing {
 export interface Seat {
   playerId: string;
   name: string;
-  /** Which of the SEATS seats this is (1-based), not a ranking. */
+  /** Which seat this is (1-based), not a ranking. */
   seat: number;
-  /** How this seat was won — the code, or the room's vote. */
-  path: 'escape' | 'vote';
+  /** How this seat was won: the code, the record, or the room. */
+  path: SeatPath;
   /**
-   * Meaningless for a seat taken by `path: 'escape'` — an escapee can't be
-   * voted for, so this is always 0 for them. The screen branches on `path`,
-   * never on this being zero.
+   * Truthful for everybody, but only decisive on `path: 'vote'` — an escapee
+   * cannot be voted for at all, so theirs is always 0. The screen branches on
+   * `path`, never on this being zero.
    */
   votes: number;
   /** Same odds as Standing.average, and the same reason the name stuck. */
@@ -138,8 +151,14 @@ export interface Snapshot {
   reveal: RevealRow[] | null;
   /** Everybody's rate. Null until the tribunal, because it is refused before. */
   standings: Standing[] | null;
-  /** Who takes a seat. More rows than SEATS means the last one is contested. */
+  /** Who takes a seat. More rows than `seatCount` means the last is contested. */
   seats: Seat[] | null;
+  /**
+   * How many seats this room is playing for, from `seatsFor(players.length)`.
+   * On the snapshot rather than recomputed per screen so the phones and the
+   * backend can never disagree about how many people are getting out.
+   */
+  seatCount: number;
   /**
    * The current round's extraction-manifest digit, if this round carries one
    * — gone the instant the host advances, by design: reconstructing the code

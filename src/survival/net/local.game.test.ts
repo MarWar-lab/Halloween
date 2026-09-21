@@ -17,7 +17,7 @@ installBrowser();
 const { LocalSurvivalBackend } = await import('./local');
 const { SEALED, worstOption } = await import('../sealed');
 const { DARK_CHOICES, INTRO_QUESTIONS } = await import('../questions');
-import { SEATS } from '../types';
+import { seatsFor } from '../types';
 import type { Snapshot } from '../types';
 
 type Backend = InstanceType<typeof LocalSurvivalBackend>;
@@ -235,14 +235,16 @@ describe('The Last Screen Standing, through the local backend', () => {
 
     const done = seenBy(backend, 'dev', gameId);
     expect(done.votes).toHaveLength(3);
-    // Three clean players, three seats — everyone fills one. The tie is still
-    // broken, just visible in the ORDER (seat 1 goes to the best precise
-    // odds) rather than in who gets a seat at all.
-    expect(done.seats).toHaveLength(3);
-    expect(done.seats!.every((s) => s.path === 'vote')).toBe(true);
+    // Three players play for one seat, and nobody cracked the code, so the
+    // record path claims it: everyone is level on votes, and Cara took the
+    // best move every round. The tie is broken by the night she had, which
+    // is the entire point of scoring nine rounds.
+    expect(done.seatCount).toBe(seatsFor(3));
+    expect(done.seats).toHaveLength(1);
     expect(done.seats![0].playerId).toBe(cara);
+    expect(done.seats![0].path).toBe('record');
     expect(done.seats![0].seat).toBe(1);
-    expect(done.seats![0].votes).toBe(1);
+    expect([hana, dev]).not.toContain(done.seats![0].playerId);
   });
 
   it('ranks and breaks ties on the unrounded odds, not the displayed ones', async () => {
@@ -439,9 +441,10 @@ describe('the extraction code', () => {
     }
   });
 
-  it('seats all three clean solvers by the code alone, once all three have solved', async () => {
+  it('gives the code its seat in solve order, and no more than its share', async () => {
     const real = docOf(gameId).keyCode;
-    for (const who of ['cara', 'dev', 'hana']) {
+    const first = ['cara', 'dev', 'hana'];
+    for (const who of first) {
       tab(who);
       await backend.escape(gameId, real);
     }
@@ -449,9 +452,14 @@ describe('the extraction code', () => {
     await backend.advance(gameId); // → tribunal
     await backend.advance(gameId); // → result
 
-    const seats = seenBy(backend, 'hana', gameId).seats!;
-    expect(seats).toHaveLength(3);
-    expect(seats.every((s) => s.path === 'escape')).toBe(true);
+    const snap = seenBy(backend, 'hana', gameId);
+    const seats = snap.seats!;
+    // Everybody solved it, but the code is one path of three and this room
+    // plays for one seat. It goes to whoever got there first, and the rest
+    // of the chopper is not the code's to give away.
+    expect(seats).toHaveLength(snap.seatCount);
+    expect(seats[0].path).toBe('escape');
+    expect(seats[0].playerId).toBe(idOf(snap, 'Cara'));
   });
 
   it('skips a disqualified first solver — the seat passes to the next solver', async () => {
@@ -725,7 +733,7 @@ describe('consensus mode', () => {
     await expect(backend.escape(made.gameId, '1111')).rejects.toThrow();
   });
 
-  it('cracking the code seats the WHOLE team at once, not just whoever typed it', async () => {
+  it('seats whoever states the code, and leaves their team the other two paths', async () => {
     installBrowser();
     const backend = new LocalSurvivalBackend();
     tab('hana');
@@ -750,10 +758,16 @@ describe('consensus mode', () => {
     const snap = seenBy(backend, 'hana', made.gameId);
     const hanaId = idOf(snap, 'Hana');
     const caraId = idOf(snap, 'Cara');
-    expect(snap.escapedPlayerIds).toEqual(expect.arrayContaining([hanaId, caraId]));
+    // The team solved it together — shared clues, one keypad, one cooldown,
+    // and Hana's wrong guess is what set it running. But the walk through
+    // the door is individual, because an escape path that seats whole teams
+    // takes the entire chopper at any realistic headcount and leaves the
+    // nine rounds and the tribunal deciding nothing.
+    expect(snap.escapedPlayerIds).toEqual([caraId]);
+    expect(snap.escapedPlayerIds).not.toContain(hanaId);
   });
 
-  it('a team bigger than the seats left over shares the last one, contested — never an arbitrary pick', async () => {
+  it('a solving team does not take the whole chopper with it', async () => {
     installBrowser();
     const backend = new LocalSurvivalBackend();
     const names = ['hana', 'cara', 'dev', 'lee', 'gia'];
@@ -765,43 +779,82 @@ describe('consensus mode', () => {
     }
     tab('hana');
     await backend.setMode(made.gameId, 'consensus');
-    await backend.advance(made.gameId); // briefing — teams are drawn randomly here
+    await backend.advance(made.gameId); // briefing — teams are drawn here
     await backend.advance(made.gameId); // running — first warm-up
-
-    // Teams are random now, so find out who actually ended up on the pair
-    // vs the trio rather than assuming any particular name did.
-    const pairMember = names.find((n) => (seenBy(backend, n, made.gameId).myTeam?.length ?? 0) === 2)!;
-    const trioMember = names.find((n) => (seenBy(backend, n, made.gameId).myTeam?.length ?? 0) === 3)!;
-    const pairIds = seenBy(backend, pairMember, made.gameId).myTeam!;
-    const trioIds = seenBy(backend, trioMember, made.gameId).myTeam!;
-
-    const code = docOf(made.gameId).keyCode;
-    // The pair solves first and takes 2 of the 3 seats.
-    tab(pairMember);
-    const first = await backend.escape(made.gameId, code);
-    expect(first.accepted).toBe(true);
-
-    // The trio solves next — only 1 seat is left for the 3 of them.
-    tab(trioMember);
-    const second = await backend.escape(made.gameId, code);
-    expect(second.accepted).toBe(true);
-
     await skipWarmups(backend, made.gameId);
-    tab('hana');
+
+    // One member of one team states the code. Under the old rule their whole
+    // team boarded, which at three seats meant a team of three took every
+    // one of them and the other two paths decided nothing at all.
+    const code = docOf(made.gameId).keyCode;
+    const solver = names.find((n) => (seenBy(backend, n, made.gameId).myTeam?.length ?? 0) >= 2)!;
+    tab(solver);
+    expect((await backend.escape(made.gameId, code)).accepted).toBe(true);
+
     await playOut(backend, made.gameId);
+    tab('hana');
     await backend.advance(made.gameId); // → plea
     await backend.advance(made.gameId); // → tribunal
     await backend.advance(made.gameId); // → result
 
     const snap = seenBy(backend, 'hana', made.gameId);
-    const trioSeats = (snap.seats ?? []).filter((s) => trioIds.includes(s.playerId));
-    // All 3 share what's left, marked contested — never 1 or 2 of them
-    // picked arbitrarily by insertion order.
-    expect(trioSeats).toHaveLength(3);
-    expect(trioSeats.every((s) => s.contested && s.path === 'escape' && s.seat === SEATS)).toBe(true);
+    const solverId = idOf(snap, solver[0].toUpperCase() + solver.slice(1));
+    const escapeSeats = (snap.seats ?? []).filter((s) => s.path === 'escape');
 
-    const pairSeats = (snap.seats ?? []).filter((s) => pairIds.includes(s.playerId));
-    expect(pairSeats).toHaveLength(2);
-    expect(pairSeats.every((s) => !s.contested)).toBe(true);
+    expect(snap.seatCount).toBe(seatsFor(5));
+    expect(escapeSeats).toHaveLength(1);
+    expect(escapeSeats[0].playerId).toBe(solverId);
+    // Their teammates keep every other route out: the code took one seat,
+    // not the aircraft.
+    expect((snap.seats ?? []).length).toBeGreaterThan(1);
+    expect((snap.seats ?? []).some((s) => s.path !== 'escape')).toBe(true);
   });
+
+  it('gives the code, the record and the room a seat each', async () => {
+    installBrowser();
+    const backend = new LocalSurvivalBackend();
+    const names = ['hana', 'cara', 'dev', 'lee', 'gia'];
+    tab('hana');
+    const made = await backend.create('Hana');
+    for (const name of names.slice(1)) {
+      tab(name);
+      await backend.join(made.code, name[0].toUpperCase() + name.slice(1));
+    }
+    tab('hana');
+    await backend.advance(made.gameId); // briefing
+    await backend.advance(made.gameId); // running
+    await skipWarmups(backend, made.gameId);
+
+    // Dev cracks the code. Cara takes the best move every round and nobody
+    // else answers at all, so Cara alone has a record worth a seat. The room
+    // then votes Lee aboard.
+    tab('dev');
+    expect((await backend.escape(made.gameId, docOf(made.gameId).keyCode)).accepted).toBe(true);
+    await playOut(backend, made.gameId, 'cara');
+
+    tab('hana');
+    await backend.advance(made.gameId); // → plea
+    await backend.advance(made.gameId); // → tribunal
+
+    const at = seenBy(backend, 'hana', made.gameId);
+    const lee = idOf(at, 'Lee');
+    for (const voter of ['hana', 'cara', 'gia']) {
+      tab(voter);
+      await backend.vote(made.gameId, lee);
+    }
+    tab('hana');
+    await backend.advance(made.gameId); // → result
+
+    const snap = seenBy(backend, 'hana', made.gameId);
+    const seatOn = (path: string) => (snap.seats ?? []).filter((s) => s.path === path);
+
+    // This is the whole point of the change. The puzzle, the nine moral
+    // rounds and the plea each decide exactly one seat, so none of the three
+    // is decoration.
+    expect(snap.seatCount).toBe(3);
+    expect(seatOn('escape').map((s) => s.name)).toEqual(['Dev']);
+    expect(seatOn('record').map((s) => s.name)).toEqual(['Cara']);
+    expect(seatOn('vote').map((s) => s.name)).toEqual(['Lee']);
+  });
+
 });
