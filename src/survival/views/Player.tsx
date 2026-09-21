@@ -231,7 +231,10 @@ function Task({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
       <>
         <header>
           <p className="eyebrow">The tribunal</p>
-          <h2>{snapshot.seatCount} seats. Make the case for what is left.</h2>
+          <h2>
+            {snapshot.seatCount} {snapshot.seatCount === 1 ? 'seat' : 'seats'}. Make the case for
+            what is left.
+          </h2>
         </header>
         <Board snapshot={snapshot} />
         {escaped.has(me) ? (
@@ -299,7 +302,7 @@ function Task({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
 function KeyReveal({ snapshot }: { snapshot: Snapshot }) {
   if (!snapshot.keyReveal) return null;
   return (
-    <div className="transmission">
+    <div className="transmission green">
       <p className="eyebrow">The manifest, unsealed</p>
       <p className="big-code">{snapshot.keyReveal.code}</p>
       <p className="muted">{snapshot.keyReveal.recipe}</p>

@@ -96,3 +96,24 @@ it('shows the board of everyone\'s case above the vote, before and after voting'
   expect(html).toContain('I have the passcodes');
   expect(html).toContain('>65%<');
 });
+
+it('does not offer "1 seats" when the room is small enough to play for one', () => {
+  // The header was written when SEATS was a constant three. seatsFor makes it
+  // one for a room of three or four, and the copy has to survive that.
+  const one = { ...base('tribunal'), seatCount: 1 };
+  expect(render(one)).toContain('1 seat.');
+  expect(render(one)).not.toContain('1 seats');
+  expect(render({ ...base('tribunal'), seatCount: 3 })).toContain('3 seats.');
+});
+
+it('tells the room what the code was, once it no longer matters', () => {
+  // survival_key_reveal has returned this at `result` since the extraction
+  // puzzle shipped and nothing ever rendered it, so a room that failed to
+  // crack the code never found out what it was.
+  const done = { ...base('result'), keyReveal: { code: '4821', recipe: 'Berth 4 down to berth 1.' } };
+  const html = render(done);
+  expect(html).toContain('4821');
+  expect(html).toContain('Berth 4 down to berth 1.');
+  // And nothing leaks it before the helicopter has lifted.
+  expect(render(base('tribunal'))).not.toContain('4821');
+});
