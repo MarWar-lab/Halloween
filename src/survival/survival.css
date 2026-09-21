@@ -490,14 +490,11 @@
 /* ── the manifest terminal ──────────────────────────────────────────────── */
 
 /*
- * A vintage CRT monitor beside a manifest line's label. `.crt-rig` is the
- * whole prop (monitor + stand + label); `.crt-monitor`/`.crt-bezel`/
- * `.crt-screen` are the housing, its frame and the glass; `.digit-rain` and
- * `.crt-text` are BOTH painted inside `.crt-screen` — the rain behind, the
- * actual manifest line glowing in front of it, so the line lives on the
- * tube rather than in a separate box beside the machine. Generic on
- * purpose — no logo, no particular model, drawn with gradients and shadows
- * rather than a photo.
+ * A real vintage computer photo beside a manifest line's label, its own
+ * screen carrying the manifest text and the digit rain. `.crt-rig` is the
+ * whole prop; `.crt-photo` holds the (darkened, colour-tinted) image;
+ * `.crt-tube` is positioned over the photographed screen's own bounds and
+ * holds everything "on screen" — `digit-rain` behind, `.crt-text` in front.
  */
 .survival .manifest-rig {
   display: grid;
@@ -507,59 +504,46 @@
 
 .survival .crt-rig { display: grid; justify-items: center; gap: 0.3rem; }
 
-/* The housing: a chunky plastic case, lighter at the top-left as if lit
-   from above, with a thick bezel around the tube. */
-.survival .crt-monitor {
+.survival .crt-photo {
   position: relative;
   width: 100%;
   max-width: 260px;
-  border-radius: 0.9rem;
-  padding: 0.85rem;
-  background: linear-gradient(155deg, #4a4a44, #1f1e1b 65%);
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.6) inset,
-    0 1px 0 rgba(255, 255, 255, 0.08) inset,
-    0 8px 16px rgba(0, 0, 0, 0.5);
-}
-
-.survival .crt-power {
-  position: absolute;
-  right: 0.6rem;
-  bottom: 0.45rem;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--phosphor);
-  box-shadow: 0 0 4px 1px var(--phosphor);
-}
-.survival .crt-rig.red .crt-power { background: var(--alarm); box-shadow: 0 0 4px 1px var(--alarm); }
-
-.survival .crt-bezel {
-  width: 100%;
-  aspect-ratio: 4 / 3;
   border-radius: 0.6rem;
-  padding: 0.55rem;
-  background: #100f0d;
-  box-shadow: 0 0 0 1px #000 inset;
+  overflow: hidden;
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.5);
 }
 
-.survival .crt-screen {
-  position: relative;
+.survival .crt-photo img {
+  display: block;
   width: 100%;
-  height: 100%;
+  height: auto;
+  /* Pulls a bright, neutral studio photo into this game's dark, tinted
+     palette — no crop tool needed, just filters. */
+  filter: brightness(0.45) contrast(1.15) saturate(0.5)
+    drop-shadow(0 0 30px var(--crt-glow, rgba(61, 220, 132, 0.25)));
+}
+.survival .crt-rig.green .crt-photo img { --crt-glow: rgba(61, 220, 132, 0.3); }
+.survival .crt-rig.red .crt-photo img { --crt-glow: rgba(255, 77, 77, 0.3); }
+
+/* The photographed screen's own position within the frame, measured by eye
+   against public/crt/vintage-monitor.jpg — a decorative approximation, not
+   a pixel-exact mask. */
+.survival .crt-tube {
+  position: absolute;
+  left: 32%;
+  top: 27%;
+  width: 51%;
+  height: 32%;
   overflow: hidden;
-  /* An exaggerated corner radius plus the inset shadows below is what
-     reads as curved glass rather than a flat rounded rectangle. */
-  border-radius: 50% / 8%;
-  background: #030405;
-  box-shadow: 0 0 18px 2px var(--crt-glow, rgba(61, 220, 132, 0.35)) inset;
+  border-radius: 50% / 14%;
   display: grid;
   align-items: center;
+  box-shadow: 0 0 16px 3px var(--crt-glow, rgba(61, 220, 132, 0.45)) inset;
 }
-.survival .crt-rig.green .crt-screen { --crt-glow: rgba(61, 220, 132, 0.4); }
-.survival .crt-rig.red .crt-screen { --crt-glow: rgba(255, 77, 77, 0.4); }
+.survival .crt-rig.green .crt-tube { --crt-glow: rgba(61, 220, 132, 0.5); }
+.survival .crt-rig.red .crt-tube { --crt-glow: rgba(255, 77, 77, 0.5); }
 
-.survival .crt-screen .digit-rain {
+.survival .crt-tube .digit-rain {
   position: absolute;
   inset: 0;
   width: 100%;
@@ -571,26 +555,16 @@
 .survival .crt-text {
   position: relative;
   z-index: 1;
-  padding: 0.5rem 0.9rem;
-  font-size: 0.8rem;
-  line-height: 1.35;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.56rem;
+  line-height: 1.3;
   text-align: center;
   color: var(--bone);
-  text-shadow: 0 0 6px var(--crt-glow, rgba(61, 220, 132, 0.6));
+  text-shadow: 0 0 6px var(--crt-glow, rgba(61, 220, 132, 0.7));
   cursor: pointer;
 }
 
-/* A curvature highlight, on top of the rain and text alike, so both read as
-   sitting behind glass rather than painted flat. */
-.survival .crt-curve {
-  position: absolute;
-  inset: 0;
-  background: radial-gradient(ellipse at 35% 25%, rgba(255, 255, 255, 0.05), transparent 60%);
-  pointer-events: none;
-}
-
-/* Scanlines, a diagonal glare and a soft dark vignette at the screen's
-   edge — glass without an image asset. */
+/* Scanlines inside the tube — glass without an image asset. */
 .survival .crt-scanlines {
   position: absolute;
   inset: 0;
@@ -603,37 +577,43 @@
   );
   mix-blend-mode: multiply;
 }
-.survival .crt-glare {
-  position: absolute;
-  inset: -20% -60%;
-  background: linear-gradient(
-    115deg,
-    transparent 40%,
-    rgba(255, 255, 255, 0.05) 48%,
-    rgba(255, 255, 255, 0.09) 50%,
-    rgba(255, 255, 255, 0.05) 52%,
-    transparent 60%
-  );
-  pointer-events: none;
-}
 .survival .crt-vignette {
   position: absolute;
   inset: 0;
-  box-shadow: 0 0 22px 14px rgba(0, 0, 0, 0.7) inset;
+  box-shadow: 0 0 10px 6px rgba(0, 0, 0, 0.7) inset;
 }
 
-/* A short stand and base under the housing. */
-.survival .crt-stand {
-  width: 22%;
-  height: 10px;
-  background: linear-gradient(to bottom, #2c2b28, #171614);
-  clip-path: polygon(30% 0, 70% 0, 100% 100%, 0 100%);
+/*
+ * The scary element: irregular corruption, not a character. A colour-channel
+ * "tear" flashes across the tube on an uneven rhythm, with an occasional
+ * pale flicker underneath it — the visual shorthand for "this feed is
+ * compromised," matching the game's own bio-digital-virus premise. Long,
+ * mostly-still stretches with a sudden brief flash read as far more
+ * unsettling than a constant effect, so most of the keyframe is quiet.
+ */
+.survival .crt-glitch {
+  position: absolute;
+  inset: 0;
+  mix-blend-mode: screen;
+  opacity: 0;
+  animation: crt-corrupt 6.5s steps(1) infinite;
 }
-.survival .crt-base {
-  width: 42%;
-  height: 6px;
-  border-radius: 3px;
-  background: linear-gradient(to bottom, #302f2c, #151412);
+.survival .crt-rig.red .crt-glitch { animation-duration: 4.5s; }
+
+@keyframes crt-corrupt {
+  0%, 91%, 100% { opacity: 0; transform: translateX(0); background: none; }
+  92% {
+    opacity: 0.5;
+    transform: translateX(-2%);
+    background: linear-gradient(90deg, rgba(255, 77, 77, 0.5), rgba(61, 220, 132, 0.35) 60%, transparent);
+  }
+  93% { opacity: 0.15; transform: translateX(1.5%); background: rgba(255, 255, 255, 0.4); }
+  94% { opacity: 0.4; transform: translateX(-1%); background: rgba(255, 77, 77, 0.4); }
+  95%, 100% { opacity: 0; transform: translateX(0); background: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .survival .crt-glitch { animation: none; }
 }
 
 .survival .crt-label {
