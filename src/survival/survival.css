@@ -490,15 +490,17 @@
 /* ── the manifest terminal ──────────────────────────────────────────────── */
 
 /*
- * A real vintage computer photo beside a manifest line's label, its own
- * screen carrying the manifest text and the digit rain. `.crt-rig` is the
- * whole prop; `.crt-photo` holds the (darkened, colour-tinted) image;
- * `.crt-tube` is positioned over the photographed screen's own bounds and
- * holds everything "on screen" — `digit-rain` behind, `.crt-text` in front.
+ * A real vintage computer photo, lit from inside by the digit rain — one
+ * object, one effect. The line the player actually reads is NOT on it; it's
+ * the plain `.transmission` box beneath, same styling every other one-off
+ * transmission in this game uses. `.crt-rig` is the whole prop; `.crt-photo`
+ * holds the (darkened, colour-tinted) image; `.crt-tube` is positioned over
+ * the photographed screen's own bounds and holds only the rain and the
+ * occasional corruption glitch.
  */
 .survival .manifest-rig {
   display: grid;
-  gap: 0.4rem;
+  gap: 0.5rem;
   margin-bottom: 0.6rem;
 }
 
@@ -550,39 +552,6 @@
   height: 100%;
 }
 
-/* The manifest line itself, glowing on the tube — monochrome terminal text
-   over the rain, never a separate box. */
-.survival .crt-text {
-  position: relative;
-  z-index: 1;
-  padding: 0.3rem 0.5rem;
-  font-size: 0.56rem;
-  line-height: 1.3;
-  text-align: center;
-  color: var(--bone);
-  text-shadow: 0 0 6px var(--crt-glow, rgba(61, 220, 132, 0.7));
-  cursor: pointer;
-}
-
-/* Scanlines inside the tube — glass without an image asset. */
-.survival .crt-scanlines {
-  position: absolute;
-  inset: 0;
-  background: repeating-linear-gradient(
-    to bottom,
-    rgba(0, 0, 0, 0.35) 0,
-    rgba(0, 0, 0, 0.35) 1px,
-    transparent 1px,
-    transparent 3px
-  );
-  mix-blend-mode: multiply;
-}
-.survival .crt-vignette {
-  position: absolute;
-  inset: 0;
-  box-shadow: 0 0 10px 6px rgba(0, 0, 0, 0.7) inset;
-}
-
 /*
  * The scary element: irregular corruption, not a character. A colour-channel
  * "tear" flashes across the tube on an uneven rhythm, with an occasional
@@ -623,27 +592,6 @@
 }
 .survival .crt-rig.green .crt-label { color: var(--phosphor); }
 .survival .crt-rig.red .crt-label { color: var(--alarm); }
-
-/* Obscured, hidden, consensus-asking and style variants — same rules the
-   old `.transmission` box used, now targeting the text on the tube. */
-.survival .crt-text .reveal-hint {
-  display: block;
-  margin-top: 0.3rem;
-  color: var(--bone-dim);
-  font-size: 0.8em;
-  font-style: italic;
-  text-shadow: none;
-}
-.survival .crt-text.revealed .reveal-hint { display: none; }
-
-.survival .crt-text.frost:not(.revealed) { text-shadow: 0 0 6px #7fd8ff; }
-.survival .crt-text.frost:not(.revealed) .reveal-hint { color: #7fd8ff; }
-.survival .crt-text.static:not(.revealed) { animation: survival-flicker 2.4s ease-in-out infinite; }
-.survival .crt-text.torn:not(.revealed) { transform: rotate(-0.6deg); }
-
-@media (prefers-reduced-motion: reduce) {
-  .survival .crt-text.static:not(.revealed) { animation: none; }
-}
 
 /* An obscured manifest line — tappable, cursor says so, and the reveal hint
    restates it in text (never colour or cursor alone). */

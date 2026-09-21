@@ -1,16 +1,17 @@
 /**
- * A real vintage computer photo, with the manifest projected onto its own
- * screen.
+ * A real vintage computer photo, playing the digit rain on its own screen.
+ *
+ * Redraw: the manifest TEXT used to live here too, stacked on top of the
+ * rain, the scanlines, the vignette and the glitch all at once — which read
+ * as noise, not atmosphere. This component now does exactly one job (the
+ * machine, lit from inside by the rain) and nothing else; the actual line
+ * the player reads lives in its own plain, uncluttered box next to it — see
+ * `ManifestLine` in `views/Player.tsx`. One effect at a time: the rain, and
+ * an occasional corruption glitch. No scanlines, no vignette layered on top
+ * of those — the photo's own darkness already does that work.
  *
  * `public/crt/vintage-monitor.jpg` is a real, freely-licensed photo (see
- * CREDITS.md) — everything else on this component is still CSS: the dark,
- * colour-tinted filter that pulls the photo into this game's palette, the
- * `.crt-tube` overlay positioned over the photographed screen's own bounds
- * (measured by eye against the source photo, not computed — a decorative
- * prop, not a compositing pipeline), and the glitch flicker that's meant to
- * read as unsettling without depicting anything specific: colour-channel
- * tearing and a stray flash, the visual shorthand for "something in this
- * feed is corrupted" rather than a character or a scene.
+ * CREDITS.md).
  */
 
 import type { ReactNode } from 'react';
@@ -28,9 +29,7 @@ export function Terminal({ color, label, children }: TerminalProps) {
         <img src="/crt/vintage-monitor.jpg" alt="" aria-hidden="true" />
         <div className="crt-tube">
           {children}
-          <div className="crt-scanlines" aria-hidden="true" />
           <div className="crt-glitch" aria-hidden="true" />
-          <div className="crt-vignette" aria-hidden="true" />
         </div>
       </div>
       <p className="crt-label">{label}</p>

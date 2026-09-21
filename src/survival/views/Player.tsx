@@ -593,25 +593,27 @@ function ManifestLine({
   const copy = MANIFEST_STYLE_COPY[manifest.style];
   return (
     <div className="manifest-rig">
-      {/* The line itself lives ON the tube now, not in a box beside the
-          machine — the rain plays behind it, the text glows in front.
-          Pours harder while hidden; the tap that reveals it is the payoff,
-          so the rain settles once there's a real digit to read on screen. */}
+      {/* Un-stacked: the machine is one object (photo, lit from inside by
+          the rain, nothing else on it), the line you actually read is a
+          separate, plain box next to it. The two together were reading as
+          noise piled on top of itself; apart, each one is legible on its
+          own. Rain pours harder while hidden and settles once there's a
+          real digit — the tap that reveals it is still the payoff. */}
       <Terminal color={manifest.color} label={`BERTH ${manifest.berth}`}>
         <DigitRain color={manifest.color} intensity={revealed ? 0.2 : 0.8} />
-        <div
-          role="button"
-          tabIndex={0}
-          className={`crt-text ${manifest.color} ${manifest.style}${revealed ? ' revealed' : ''}`}
-          onClick={() => setRevealed(true)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' || e.key === ' ') setRevealed(true);
-          }}
-        >
-          {manifest.line(revealed ? String(clue.digit) : copy.placeholder)}
-          {!revealed && <span className="reveal-hint"> — {copy.prompt}</span>}
-        </div>
       </Terminal>
+      <div
+        role="button"
+        tabIndex={0}
+        className={`transmission ${manifest.color} ${manifest.style}${revealed ? ' revealed' : ''}`}
+        onClick={() => setRevealed(true)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') setRevealed(true);
+        }}
+      >
+        {manifest.line(revealed ? String(clue.digit) : copy.placeholder)}
+        {!revealed && <span className="reveal-hint"> — {copy.prompt}</span>}
+      </div>
     </div>
   );
 }
