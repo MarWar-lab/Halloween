@@ -1,11 +1,13 @@
 /**
- * An open laptop, sitting beside a manifest line rather than under it.
+ * A vintage CRT monitor, sitting beside the manifest line's round label.
  *
- * Screen, camera dot, hinge, keyboard deck and a trackpad — all CSS, no
- * image assets, matching the rest of this game's "everything is drawn,
- * nothing is a picture" rule. `DigitRain` is the picture ON the screen;
- * this is the machine around it. Deliberately generic — no logo, no brand
- * silhouette, just the shape any laptop shares.
+ * A chunky plastic housing, a thick bezel, a curved tube behind glass, and a
+ * short stand — all CSS gradients and shadows, no image assets, matching
+ * the rest of this game's "everything is drawn, nothing is a picture" rule.
+ * `children` is whatever sits ON the tube: `DigitRain` behind, the actual
+ * manifest text in front of it — both painted on the one glowing screen
+ * rather than the text living in a separate box beside the machine.
+ * Generic on purpose — no logo, no particular model.
  */
 
 import type { ReactNode } from 'react';
@@ -16,35 +18,23 @@ export interface TerminalProps {
   children: ReactNode;
 }
 
-const KEYBOARD_ROWS = [12, 12, 11, 10];
-
 export function Terminal({ color, label, children }: TerminalProps) {
   return (
     <div className={`crt-rig ${color}`}>
-      <div className="crt-laptop">
-        <div className="crt-lid">
-          <div className="crt-camera" aria-hidden="true" />
-          <div className="crt-bezel">
-            <div className="crt-screen">
-              {children}
-              <div className="crt-scanlines" aria-hidden="true" />
-              <div className="crt-glare" aria-hidden="true" />
-              <div className="crt-vignette" aria-hidden="true" />
-            </div>
+      <div className="crt-monitor">
+        <div className="crt-power" aria-hidden="true" />
+        <div className="crt-bezel">
+          <div className="crt-screen">
+            {children}
+            <div className="crt-curve" aria-hidden="true" />
+            <div className="crt-scanlines" aria-hidden="true" />
+            <div className="crt-glare" aria-hidden="true" />
+            <div className="crt-vignette" aria-hidden="true" />
           </div>
-        </div>
-        <div className="crt-hinge" aria-hidden="true" />
-        <div className="crt-deck" aria-hidden="true">
-          <div className="crt-keys">
-            {KEYBOARD_ROWS.map((count, row) => (
-              <div className="crt-key-row" key={row}>
-                {Array.from({ length: count }, (_, i) => <span key={i} className="crt-key" />)}
-              </div>
-            ))}
-          </div>
-          <div className="crt-trackpad" />
         </div>
       </div>
+      <div className="crt-stand" aria-hidden="true" />
+      <div className="crt-base" aria-hidden="true" />
       <p className="crt-label">{label}</p>
     </div>
   );

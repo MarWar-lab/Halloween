@@ -260,8 +260,7 @@ export const QUESTIONS: Question[] = [
       berth: 2,
       color: 'red',
       style: 'static',
-      line: (seal) =>
-        `A café screen behind them is still carrying the manifest: berth 2, seal ${seal} — red, rejected.`,
+      line: (seal) => `berth 2, seal ${seal} — red, rejected.`,
     },
   },
   {
