@@ -476,9 +476,6 @@
    line for the current round. Colour AND a left border together, the same
    "never colour alone" rule the rest of this stylesheet already follows. */
 .survival .transmission {
-  position: relative;
-  isolation: isolate;
-  overflow: hidden;
   border-left: 3px solid var(--alarm);
   background: var(--ink-raised);
   padding: 0.75rem 1rem;
@@ -490,20 +487,81 @@
 .survival .transmission.red { border-left-color: var(--alarm); }
 .survival .transmission.alarm { border-left-color: var(--alarm); }
 
-/* The rain sits behind the text (isolation + z-index above), never in front
-   of it — this is atmosphere for a line the player still has to read. */
-.survival .digit-rain {
+/* ── the manifest terminal ──────────────────────────────────────────────── */
+
+/*
+ * The old monitor beside a manifest line — its own object, stacked above the
+ * transmission text rather than underneath it. `.crt-rig` is the whole prop
+ * (monitor + label); `.crt-bezel`/`.crt-screen` are the frame and the glass;
+ * `.digit-rain` is only ever painted inside `.crt-screen`, never elsewhere.
+ */
+.survival .manifest-rig {
+  display: grid;
+  gap: 0.4rem;
+  margin-bottom: 0.6rem;
+}
+
+.survival .crt-rig { display: grid; justify-items: center; gap: 0.35rem; }
+
+.survival .crt-bezel {
+  width: 100%;
+  max-width: 220px;
+  aspect-ratio: 4 / 3;
+  border-radius: 0.9rem;
+  padding: 0.5rem;
+  background: linear-gradient(155deg, #262b30, #101316 60%);
+  box-shadow:
+    0 0 0 1px #000 inset,
+    0 6px 14px rgba(0, 0, 0, 0.5);
+}
+
+.survival .crt-screen {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 0.5rem;
+  background: #030405;
+  box-shadow: 0 0 18px 2px var(--crt-glow, rgba(61, 220, 132, 0.35)) inset;
+}
+.survival .crt-rig.green .crt-screen { --crt-glow: rgba(61, 220, 132, 0.4); }
+.survival .crt-rig.red .crt-screen { --crt-glow: rgba(255, 77, 77, 0.4); }
+
+.survival .crt-screen .digit-rain {
   position: absolute;
   inset: 0;
-  z-index: 0;
   width: 100%;
   height: 100%;
 }
-.survival .transmission-text {
-  position: relative;
-  z-index: 1;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+
+/* Scanlines and a soft dark vignette at the screen's edge — glass curvature
+   without an image asset. */
+.survival .crt-scanlines {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.35) 0,
+    rgba(0, 0, 0, 0.35) 1px,
+    transparent 1px,
+    transparent 3px
+  );
+  mix-blend-mode: multiply;
 }
+.survival .crt-vignette {
+  position: absolute;
+  inset: 0;
+  box-shadow: 0 0 22px 10px rgba(0, 0, 0, 0.65) inset;
+  border-radius: 0.5rem;
+}
+
+.survival .crt-label {
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  color: var(--bone-dim);
+}
+.survival .crt-rig.green .crt-label { color: var(--phosphor); }
+.survival .crt-rig.red .crt-label { color: var(--alarm); }
 
 /* An obscured manifest line — tappable, cursor says so, and the reveal hint
    restates it in text (never colour or cursor alone). */

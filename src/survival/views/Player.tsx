@@ -30,6 +30,7 @@ import type { Survival } from '../state/useSurvival';
 import { Clip } from './Clip';
 import { clockOf } from '../puzzles';
 import { DigitRain } from '../scene/DigitRain';
+import { Terminal } from '../scene/Terminal';
 
 interface Props {
   survival: Survival;
@@ -591,23 +592,27 @@ function ManifestLine({
 
   const copy = MANIFEST_STYLE_COPY[manifest.style];
   return (
-    <div
-      role="button"
-      tabIndex={0}
-      className={`transmission ${manifest.color} ${manifest.style}${revealed ? ' revealed' : ''}`}
-      onClick={() => setRevealed(true)}
-      onKeyDown={(e) => {
-        if (e.key === 'Enter' || e.key === ' ') setRevealed(true);
-      }}
-    >
-      {/* Pours harder while the line is still hidden — the tap that reveals
-          it is the payoff, so the rain settles down once there's a real
-          digit to read instead of competing with it. */}
-      <DigitRain color={manifest.color} intensity={revealed ? 0.15 : 0.7} />
-      <span className="transmission-text">
+    <div className="manifest-rig">
+      {/* A separate object, not a wash under the text: an old monitor
+          playing the berth's own colour, sitting next to the line rather
+          than behind it. Pours harder while the line is hidden — the tap
+          that reveals it is the payoff, so the rain settles down once
+          there's a real digit on screen instead of still competing for it. */}
+      <Terminal color={manifest.color} label={`BERTH ${manifest.berth}`}>
+        <DigitRain color={manifest.color} intensity={revealed ? 0.2 : 0.8} />
+      </Terminal>
+      <div
+        role="button"
+        tabIndex={0}
+        className={`transmission ${manifest.color} ${manifest.style}${revealed ? ' revealed' : ''}`}
+        onClick={() => setRevealed(true)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') setRevealed(true);
+        }}
+      >
         {manifest.line(revealed ? String(clue.digit) : copy.placeholder)}
         {!revealed && <span className="reveal-hint"> — {copy.prompt}</span>}
-      </span>
+      </div>
     </div>
   );
 }

@@ -1,10 +1,15 @@
 /**
- * Falling columns of digits behind a manifest line — purely decorative, and
- * purely original: random 0-9 glyphs streaming down a canvas, nothing more
+ * Falling columns of digits — the picture on the screen inside `Terminal`
+ * (see `./Terminal.tsx`), never behind the text a player has to read. An
+ * earlier version sat as a translucent wash under the manifest line itself
+ * and just made it harder to read; this is the redraw, as its own object
+ * instead of a background.
+ *
+ * Purely original: random 0-9 glyphs streaming down a canvas, nothing more
  * specific than that. Colour is the only thing that carries meaning
  * (`color` mirrors `Question.manifest.color`, green or red per berth), and
- * colour is never the ONLY way that meaning reaches the player — the border
- * on `.transmission` already states it, this is on top of that, not instead.
+ * colour is never the ONLY way that meaning reaches the player — the
+ * bezel/border around it states it too.
  *
  * A real canvas with its own rAF loop, unlike the rest of this game's
  * screens — but scoped to exactly this one decorative element, cleaned up
