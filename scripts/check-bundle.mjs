@@ -79,6 +79,12 @@ if (process.env.ALLOW_LOCAL_ONLY_BUILD !== '1') {
   check('all 45 sealed outcomes can be checked', outcomes.length === 45);
   check('no sealed outcomes are shipped in JavaScript', outcomes.every((outcome) => !code.includes(outcome)));
   check('no local survival simulator is shipped', !code.includes('survival:game:'));
+  // The extraction code itself never needs a check here at all: it is
+  // generated per-game, server-side (and independently, via Math.random, in
+  // the local backend) — there is no literal answer in src/ for a bundle to
+  // leak. Don't broaden the check above to a bare 'survival:' prefix match:
+  // `survival:notes:` (the player's own scratchpad, keyed per game+player)
+  // is a legitimate PRODUCTION localStorage key and must keep shipping.
 }
 
 console.log(`\n${'='.repeat(60)}\n  ${pass} passed, ${fail.length} failed`);

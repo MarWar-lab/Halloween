@@ -30,11 +30,24 @@ export interface SurvivalBackend {
   reveal(gameId: string): Promise<void>;
   /** Next question, or next chapter. */
   advance(gameId: string): Promise<void>;
+  /**
+   * Solo or consensus play. Lobby-only — teams are drawn from whoever has
+   * joined the moment the briefing starts, so changing this later would
+   * either strand a team mid-round or silently reshuffle one.
+   */
+  setMode(gameId: string, mode: 'solo' | 'consensus'): Promise<void>;
 
   // ── players ────────────────────────────────────────────────────────────
   answer(gameId: string, optionIndex: number): Promise<void>;
   plea(gameId: string, text: string): Promise<void>;
   vote(gameId: string, targetPlayerId: string): Promise<void>;
+  /**
+   * Try the extraction code. Returns whether it was accepted and, if not,
+   * how many seconds until the same player may try again — never a per-digit
+   * hint, never a hard lockout. A correct code is final: calling this again
+   * after escaping is refused.
+   */
+  escape(gameId: string, code: string): Promise<{ accepted: boolean; retryInSeconds: number }>;
 
   heartbeat(gameId: string): void;
 }
@@ -43,6 +56,7 @@ export type SurvivalErrorCode =
   | 'no_such_game'
   | 'not_host'
   | 'already_chosen'
+  | 'already_escaped'
   | 'not_configured'
   | 'unknown';
 

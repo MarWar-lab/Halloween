@@ -28,6 +28,11 @@ export default function App() {
 
   return (
     <>
+      {campfire.error && (
+        <p className="form-error banner" role="alert" style={{ position: 'fixed', top: 0, left: 0, right: 0, zIndex: 1000 }}>
+          {campfire.error}
+        </p>
+      )}
       {view}
       {campfire.session.view !== 'stage' && (
         <button className="leave" onClick={campfire.leave}>

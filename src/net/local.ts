@@ -301,7 +301,7 @@ export class LocalBackend implements Backend {
     };
   }
 
-  subscribe(gameId: string, onChange: (snapshot: GameSnapshot) => void) {
+  subscribe(gameId: string, onChange: (snapshot: GameSnapshot) => void, _onError?: (message: string | null) => void) {
     const push = () => {
       const snap = this.snapshot(gameId);
       if (snap) onChange(snap);

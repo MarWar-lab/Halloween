@@ -17,7 +17,16 @@ import { describe, expect, it } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import { OUTCOME_MAX, SEALED, worstOption } from './sealed';
-import { INTRO_QUESTIONS, QUESTIONS } from './questions';
+import {
+  DARK_CHOICES,
+  EXTRACTION,
+  EXTRACTION_BRIEF,
+  INTRO_QUESTIONS,
+  QUESTIONS,
+  RUTHLESS_LIMIT,
+  SETUP_MAX,
+  marksOf,
+} from './questions';
 
 const root = join(import.meta.dirname, '../..');
 const migrationsDir = join(root, 'supabase/migrations');
@@ -67,6 +76,15 @@ function seedRows(): SeedRow[] {
     }
   }
   return [...byKey.values()];
+}
+
+/** The (question_idx, option_index) pairs the dark-choice migration flags, parsed the same declarative way `seedRows()` parses the percentage seed. */
+function darkSeed(): [number, number][] {
+  const file = readdirSync(migrationsDir).find((f) => f.includes('survival_dark'));
+  if (!file) return [];
+  const sql = readFileSync(join(migrationsDir, file), 'utf8');
+  const body = sql.match(/set ruthless = true[\s\S]*?in \(([\s\S]*?)\)\s*;/)?.[1] ?? '';
+  return [...body.matchAll(/\((\d+),\s*(\d+)\)/g)].map((m) => [Number(m[1]), Number(m[2])]);
 }
 
 /** Every .ts/.tsx file under src/, so a new one cannot quietly opt out. */
@@ -175,6 +193,98 @@ describe('the warm-ups', () => {
       expect(q.setup).not.toMatch(duration);
       for (const outcome of q.outcomes!) expect(outcome).not.toMatch(duration);
     }
+  });
+});
+
+/**
+ * The extraction code's content: which rounds carry a real (green) clue,
+ * which carry a decoy (red), and which carry nothing at all. Fixed content,
+ * identical every game — the per-game secret is only the digits, generated
+ * in SQL/local.ts, never here.
+ */
+describe('the extraction manifest', () => {
+  it('has exactly four green rounds, three red decoys, and two carrying nothing', () => {
+    const green = QUESTIONS.filter((q) => q.manifest?.color === 'green');
+    const red = QUESTIONS.filter((q) => q.manifest?.color === 'red');
+    const blank = QUESTIONS.filter((q) => !q.manifest);
+    expect(green).toHaveLength(4);
+    expect(red).toHaveLength(3);
+    expect(blank).toHaveLength(2);
+  });
+
+  it('gives every berth 1-4 exactly one green round, and at least one red decoy shares a berth with a green one', () => {
+    const green = QUESTIONS.filter((q) => q.manifest?.color === 'green');
+    expect(green.map((q) => q.manifest!.berth).sort()).toEqual([1, 2, 3, 4]);
+
+    const greenBerths = new Set(green.map((q) => q.manifest!.berth));
+    const redBerths = QUESTIONS.filter((q) => q.manifest?.color === 'red').map((q) => q.manifest!.berth);
+    // A naive "note the first digit you see per berth" strategy has to fail
+    // on at least one berth, or the decoys are purely decorative.
+    expect(redBerths.some((b) => greenBerths.has(b))).toBe(true);
+  });
+
+  it('the briefing and the finale reminder never state a duration', () => {
+    const duration = /\b\d+\s*(second|minute|hour|day|week|month|year)s?\b/i;
+    expect(EXTRACTION_BRIEF).not.toMatch(duration);
+    expect(EXTRACTION.rule).not.toMatch(duration);
+  });
+
+  it('keeps every setup within budget now that some carry a manifest line too', () => {
+    for (const q of QUESTIONS) expect(q.setup.length).toBeLessThanOrEqual(SETUP_MAX);
+  });
+});
+
+/**
+ * The ruthlessness trap: which choices are dark, and the threshold that
+ * disqualifies a seat. Cross-checked against the migration seed exactly the
+ * way the percentages are, so the two backends can never quietly disagree
+ * about who lives.
+ */
+describe('the ruthlessness trap', () => {
+  const darkPairs = darkSeed();
+
+  it('parses a non-empty dark-choice seed out of the migration', () => {
+    // Same free "did the regex break" guard the percentage seed test gives
+    // itself — if this is empty, every test below is comparing to nothing.
+    expect(darkPairs.length).toBeGreaterThan(0);
+  });
+
+  it('DARK_CHOICES matches the migration seed exactly, in both directions', () => {
+    const fromTs = new Set<string>();
+    QUESTIONS.forEach((_, qi) => (DARK_CHOICES[qi] ?? []).forEach((oi) => fromTs.add(`${qi}:${oi}`)));
+    const fromSql = new Set(darkPairs.map(([qi, oi]) => `${qi}:${oi}`));
+    expect([...fromTs].sort()).toEqual([...fromSql].sort());
+  });
+
+  it('every dark index names a choice that actually exists, on a real (non-negative) question', () => {
+    DARK_CHOICES.forEach((options, qi) => {
+      for (const oi of options) expect(QUESTIONS[qi]?.choices[oi]).toBeDefined();
+    });
+  });
+
+  it('the threshold is reachable, and a strict majority of the rounds that carry a dark option', () => {
+    // Reachable: a future edit that leaves fewer dark rounds than the
+    // threshold would make disqualification impossible, silently.
+    // Majority: half exactly would be reachable by an ordinary run of
+    // pragmatic picks, which is the one thing this trap must not be.
+    const roundsWithDark = DARK_CHOICES.filter((options) => options.length > 0).length;
+    expect(RUTHLESS_LIMIT).toBeLessThanOrEqual(roundsWithDark);
+    expect(RUTHLESS_LIMIT).toBeGreaterThan(roundsWithDark / 2);
+  });
+
+  it('marksOf never counts an auto-assigned answer or a warm-up round', () => {
+    const [qi, oi] = darkPairs[0];
+    const answers = [
+      { playerId: 'a', questionIdx: qi, optionIndex: oi, autoAssigned: true },
+      { playerId: 'a', questionIdx: -1, optionIndex: oi, autoAssigned: false },
+    ];
+    expect(marksOf(answers, 'a')).toBe(0);
+  });
+
+  it('marksOf does count a real, deliberate dark pick', () => {
+    const [qi, oi] = darkPairs[0];
+    const answers = [{ playerId: 'a', questionIdx: qi, optionIndex: oi, autoAssigned: false }];
+    expect(marksOf(answers, 'a')).toBe(1);
   });
 });
 

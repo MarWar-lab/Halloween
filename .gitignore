@@ -28,3 +28,8 @@ dist-ssr
 .env.*
 !.env.example
 .vercel
+
+# Image-generation scratch output that collects in the repo root. The real
+# assets live in public/; nothing at the root is ever referenced by the app.
+/*.png
+/*.avif

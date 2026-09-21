@@ -21,10 +21,10 @@ import type {
   Player,
   Plea,
   RevealRow,
+  Seat,
   Snapshot,
   Standing,
   Vote,
-  Winner,
 } from '../types';
 import { SurvivalError, type SurvivalBackend } from './types';
 
@@ -36,6 +36,7 @@ interface GameRow {
   question_idx: number;
   revealed: boolean;
   created_at: string;
+  mode: 'solo' | 'consensus';
 }
 
 const rowToGame = (r: GameRow): Game => ({
@@ -46,6 +47,7 @@ const rowToGame = (r: GameRow): Game => ({
   questionIdx: r.question_idx,
   revealed: r.revealed,
   createdAt: r.created_at,
+  mode: r.mode,
 });
 
 const rowToPlayer = (r: {
@@ -97,6 +99,11 @@ export class SupabaseSurvivalBackend implements SurvivalBackend {
         fn: 'survival_reveal_data',
         args: { p_game: MISSING, p_idx: 0 },
         why: 'the outcomes could never be shown',
+      },
+      {
+        fn: 'survival_escape',
+        args: { p_game: MISSING, p_attempt: '0000' },
+        why: 'nobody could try the extraction code',
       },
     ];
 
@@ -158,19 +165,37 @@ export class SupabaseSurvivalBackend implements SurvivalBackend {
         this.client.from('survival_pleas').select('*').eq('game_id', gameId),
         this.client.from('survival_votes').select('*').eq('game_id', gameId),
         this.client.rpc('survival_progress', { p_game: gameId }),
+        // RLS scopes this to 0-or-1 rows: only the round currently in front of
+        // the room, and only if it carries a manifest line at all.
+        this.client.from('survival_clue_digits').select('*')
+          .eq('game_id', gameId).eq('question_idx', game.questionIdx),
+        // Every team in the game, not just mine — nobody's roster is a
+        // secret, so there is nothing narrower to ask RLS for. Empty in solo
+        // mode, and empty before the briefing draws them.
+        this.client.from('survival_team_members').select('*').eq('game_id', gameId),
+        // Who to ask, on the rounds RLS didn't hand me the digit for.
+        this.client.rpc('survival_current_clue_seer', { p_game: gameId }),
       ]);
 
     for (const response of responses) {
       if (response.error) fail('Could not refresh the room.', response.error.message);
     }
     const [{ data: playerRows }, { data: answerRows }, { data: scoreRows },
-      { data: pleaRows }, { data: voteRows }, { data: progressRows }] = responses;
+      { data: pleaRows }, { data: voteRows }, { data: progressRows }, { data: clueRows },
+      { data: teamRows }, { data: clueSeerName }] = responses;
 
     // Everything below has already been filtered by row-level security. The
     // client is not choosing what to hide — it could not see the rest to hide
     // it. That is the whole point of the schema.
     const progress = (Array.isArray(progressRows) ? progressRows[0] : progressRows) as
-      { answered: string[]; pleaded: string[]; voted: string[] } | null;
+      {
+        answered: string[]; pleaded: string[]; voted: string[]; escaped: string[];
+        retry_in_seconds: number; team_attempts: number;
+      } | null;
+
+    const clueRow = (clueRows ?? [])[0] as { question_idx: number; digit: number } | undefined;
+    const clue = clueRow ? { questionIdx: clueRow.question_idx, digit: clueRow.digit } : null;
+    const clueSeer = !clue && clueSeerName ? { name: clueSeerName as string } : null;
 
     const answers: Answer[] = (answerRows ?? []).map((r) => ({
       playerId: r.player_id,
@@ -203,7 +228,9 @@ export class SupabaseSurvivalBackend implements SurvivalBackend {
     // Refused before the tribunal, deliberately and loudly. A null here means
     // "the seal is still on", not "something went wrong".
     let standings: Standing[] | null = null;
-    let winner: Winner[] | null = null;
+    let ruthless: Snapshot['ruthless'] = null;
+    let seats: Seat[] | null = null;
+    let keyReveal: Snapshot['keyReveal'] = null;
     if (game.phase === 'tribunal' || game.phase === 'result') {
       const { data, error } = await this.client.rpc('survival_standings', { p_game: gameId });
       if (error) fail('Could not load the standings.', error.message);
@@ -212,12 +239,45 @@ export class SupabaseSurvivalBackend implements SurvivalBackend {
       }));
     }
     if (game.phase === 'result') {
-      const { data, error } = await this.client.rpc('survival_winner', { p_game: gameId });
-      if (error) fail('Could not load the winner.', error.message);
-      winner = (data ?? []).map((r: { player_id: string; name: string; votes: number; average: number }) => ({
-        playerId: r.player_id, name: r.name, votes: r.votes, average: Number(r.average),
-      }));
+      // Fetched only here, deliberately — NOT alongside standings at
+      // tribunal. Opening who's disqualified while the vote is still live
+      // would let the room strategically avoid them instead of discovering
+      // the bump as a surprise once the seats are decided.
+      const { data: ruthlessData, error: ruthlessError } =
+        await this.client.rpc('survival_ruthless', { p_game: gameId });
+      if (ruthlessError) fail('Could not weigh the room.', ruthlessError.message);
+      ruthless = (ruthlessData ?? []).map(
+        (r: { player_id: string; name: string; marks: number; disqualified: boolean }) => ({
+          playerId: r.player_id, name: r.name, marks: r.marks, disqualified: r.disqualified,
+        }),
+      );
+
+      const { data, error } = await this.client.rpc('survival_seats', { p_game: gameId });
+      if (error) fail('Could not seat the helicopter.', error.message);
+      seats = (data ?? []).map(
+        (r: {
+          player_id: string; name: string; seat: number; path: 'escape' | 'vote';
+          votes: number; average: number; solve_order: number | null; contested: boolean;
+        }) => ({
+          playerId: r.player_id, name: r.name, seat: r.seat, path: r.path,
+          votes: r.votes, average: Number(r.average), solveOrder: r.solve_order, contested: r.contested,
+        }),
+      );
+
+      const { data: keyData, error: keyError } = await this.client.rpc('survival_key_reveal', { p_game: gameId });
+      if (keyError) fail('Could not open the manifest.', keyError.message);
+      const keyRow = (Array.isArray(keyData) ? keyData[0] : keyData) as
+        { code: string; recipe: string } | null;
+      keyReveal = keyRow ? { code: keyRow.code, recipe: keyRow.recipe } : null;
     }
+
+    const myTeamRow = (teamRows ?? []).find((r) => r.player_id === seatId) as
+      { team_no: number } | undefined;
+    const myTeam = myTeamRow
+      ? (teamRows ?? [])
+        .filter((r) => r.team_no === myTeamRow.team_no)
+        .map((r) => r.player_id as string)
+      : null;
 
     return {
       game,
@@ -233,7 +293,15 @@ export class SupabaseSurvivalBackend implements SurvivalBackend {
       votedPlayerIds: progress?.voted ?? [],
       reveal,
       standings,
-      winner,
+      seats,
+      clue,
+      clueSeer,
+      escapedPlayerIds: progress?.escaped ?? [],
+      retryInSeconds: progress?.retry_in_seconds ?? 0,
+      teamAttempts: progress?.team_attempts ?? 0,
+      ruthless,
+      keyReveal,
+      myTeam,
     };
   }
 
@@ -313,11 +381,22 @@ export class SupabaseSurvivalBackend implements SurvivalBackend {
     for (const refresh of this.refreshers) refresh();
   }
 
+  /** Same as `call`, but for the rare RPC whose return value the caller actually needs. */
+  private async callFor<T>(fn: string, args: Record<string, unknown>, whenItFails: string): Promise<T> {
+    const { data, error } = await this.client.rpc(fn, args);
+    if (error) fail(whenItFails, error.message);
+    for (const refresh of this.refreshers) refresh();
+    return (Array.isArray(data) ? data[0] : data) as T;
+  }
+
   reveal = (gameId: string) =>
     this.call('survival_reveal', { p_game: gameId }, 'Could not open the outcomes.');
 
   advance = (gameId: string) =>
     this.call('survival_advance', { p_game: gameId }, 'Could not move the game on.');
+
+  setMode = (gameId: string, mode: 'solo' | 'consensus') =>
+    this.call('survival_set_mode', { p_game: gameId, p_mode: mode }, 'Could not change how the room plays.');
 
   answer = (gameId: string, optionIndex: number) =>
     this.call('survival_answer', { p_game: gameId, p_option: optionIndex },
@@ -329,6 +408,13 @@ export class SupabaseSurvivalBackend implements SurvivalBackend {
   vote = (gameId: string, targetPlayerId: string) =>
     this.call('survival_vote', { p_game: gameId, p_target: targetPlayerId },
       'Your vote did not go through.');
+
+  escape = async (gameId: string, code: string) => {
+    const row = await this.callFor<{ correct: boolean; retry_in_seconds: number }>(
+      'survival_escape', { p_game: gameId, p_attempt: code }, 'The keypad did not respond.',
+    );
+    return { accepted: row.correct, retryInSeconds: row.retry_in_seconds };
+  };
 
   heartbeat(gameId: string) {
     void this.client.rpc('survival_heartbeat', { p_game: gameId });

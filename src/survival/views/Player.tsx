@@ -10,9 +10,22 @@
  * nobody has the attention to spare.
  */
 
-import { useState } from 'react';
-import { OPTION_LETTERS, survivalOddsOf, type Snapshot } from '../types';
-import { FINAL_PLEA, INTRO_QUESTIONS, OPENING, QUESTIONS, questionAt, questionLabel } from '../questions';
+import { useEffect, useRef, useState } from 'react';
+import { OPTION_LETTERS, SEATS, survivalOddsOf, type Snapshot } from '../types';
+import {
+  EXTRACTION,
+  EXTRACTION_BRIEF,
+  FINAL_PLEA,
+  INTRO_QUESTIONS,
+  OPENING,
+  QUESTIONS,
+  RUTHLESS_LIMIT,
+  marksOf,
+  questionAt,
+  questionLabel,
+  type Question,
+} from '../questions';
+import { buildDebrief } from '../debrief';
 import type { Survival } from '../state/useSurvival';
 import { Clip } from './Clip';
 
@@ -53,6 +66,12 @@ function Task({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
             <span key={p.id} className="seat in">{p.name}</span>
           ))}
         </div>
+        {game.mode === 'consensus' && (
+          <p className="muted" style={{ fontSize: '0.85rem' }}>
+            Playing in teams tonight — you&rsquo;ll be paired up once the briefing starts, and
+            any teammate&rsquo;s tap locks the choice in for both of you.
+          </p>
+        )}
       </div>
     );
   }
@@ -65,6 +84,9 @@ function Task({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
           <h2>The world ends on a Tuesday</h2>
         </header>
         <p className="setup">{OPENING}</p>
+        <p className="setup">{EXTRACTION_BRIEF}</p>
+        <TeamBanner snapshot={snapshot} me={me} />
+        <Notepad gameId={game.id} me={me} />
       </>
     );
   }
@@ -83,6 +105,8 @@ function Task({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
             <h2>{question.title}</h2>
           </header>
           <p className="setup">{question.setup}</p>
+          <TeamBanner snapshot={snapshot} me={me} />
+          <ManifestLine key={game.questionIdx} question={question} snapshot={snapshot} questionIdx={game.questionIdx} />
           <div className="moves">
             {question.choices.map((choice, i) => (
               <button
@@ -97,25 +121,32 @@ function Task({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
             ))}
           </div>
           <p className="muted" style={{ fontSize: '0.8rem' }}>
-            One tap, and it is locked. Choose carefully.
+            {snapshot.myTeam && snapshot.myTeam.length > 1
+              ? 'Any one of you can lock this in for the whole team. Talk fast.'
+              : 'One tap, and it is locked. Choose carefully.'}
           </p>
+          <Notepad gameId={game.id} me={me} />
         </>
       );
     }
 
     if (!game.revealed && mine) {
+      const onATeam = Boolean(snapshot.myTeam && snapshot.myTeam.length > 1);
       return (
         <div className="locked">
           {question.clip && <Clip src={question.clip} />}
           <p className="eyebrow">Choice locked</p>
-          <p className="big" aria-label={`You chose ${OPTION_LETTERS[mine.optionIndex]}`}>
+          <p className="big" aria-label={`${onATeam ? 'Your team chose' : 'You chose'} ${OPTION_LETTERS[mine.optionIndex]}`}>
             {OPTION_LETTERS[mine.optionIndex]}
           </p>
           <p className="muted">{question.choices[mine.optionIndex]}</p>
           <p className="muted">
             {isWarmup ? 'Waiting on the room.' : 'Calculating survival probability.'}
           </p>
+          {onATeam && <p className="muted" style={{ fontSize: '0.8rem' }}>Locked in by whoever on your team tapped first.</p>}
+          <ManifestLine key={game.questionIdx} question={question} snapshot={snapshot} questionIdx={game.questionIdx} />
           <Waiting ids={snapshot.answeredPlayerIds} players={players} verb="chosen" />
+          <Notepad gameId={game.id} me={me} />
         </div>
       );
     }
@@ -140,6 +171,9 @@ function Task({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
         }))
       : (snapshot.reveal ?? []);
 
+    const isLastRealQuestion = !isWarmup && game.questionIdx === QUESTIONS.length - 1;
+    const myMarks = marksOf(answers, me);
+
     return (
       <>
         {question.clip && <Clip src={question.clip} />}
@@ -147,6 +181,7 @@ function Task({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
           <p className="eyebrow">Outcome</p>
           <h2>{question.title}</h2>
         </header>
+        <ManifestLine key={game.questionIdx} question={question} snapshot={snapshot} questionIdx={game.questionIdx} />
         <div className="reveal-list">
           {rows.map((row, i) => (
             <div
@@ -168,9 +203,15 @@ function Task({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
         ) : (
           <p className="talk">Talk it out — and keep your own percentage to yourself.</p>
         )}
+        {isLastRealQuestion && <Transmission text={EXTRACTION.rule} />}
         {!isWarmup && (
-          <MyNumbers thisRound={myScores.find((s) => s.questionIdx === game.questionIdx)?.survivalPct} scores={myScores} />
+          <MyNumbers
+            thisRound={myScores.find((s) => s.questionIdx === game.questionIdx)?.survivalPct}
+            scores={myScores}
+            marks={myMarks}
+          />
         )}
+        <Notepad gameId={game.id} me={me} />
       </>
     );
   }
@@ -178,15 +219,24 @@ function Task({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
   if (game.phase === 'plea') return <PleaStep survival={survival} snapshot={snapshot} me={me} />;
 
   if (game.phase === 'tribunal') {
+    const escaped = new Set(snapshot.escapedPlayerIds);
+    const votingIsMoot = snapshot.escapedPlayerIds.length >= SEATS;
     const voted = snapshot.votes.find((v) => v.voterId === me);
+
     return (
       <>
         <header>
           <p className="eyebrow">The tribunal</p>
-          <h2>One seat. Make the case.</h2>
+          <h2>{SEATS} seats. Make the case for what is left.</h2>
         </header>
         <Board snapshot={snapshot} />
-        {voted ? (
+        {escaped.has(me) ? (
+          <Aboard snapshot={snapshot} me={me} />
+        ) : votingIsMoot ? (
+          <p className="talk">
+            All {SEATS} seats are already taken by the extraction code. There is nothing to vote on.
+          </p>
+        ) : voted ? (
           <div className="locked">
             <p className="eyebrow">Vote cast</p>
             <h2>{players.find((p) => p.id === voted.targetPlayerId)?.name}</h2>
@@ -195,9 +245,10 @@ function Task({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
         ) : (
           <div className="moves">
             {players
-              // You cannot vote for yourself, so your own name is not offered.
-              // Offering it greyed out would only invite the question.
-              .filter((p) => p.id !== me)
+              // You cannot vote for yourself, and an escapee cannot be voted
+              // for either — both are already off the table, so neither is
+              // offered rather than offered disabled.
+              .filter((p) => p.id !== me && !escaped.has(p.id))
               .map((p) => (
                 <button
                   key={p.id}
@@ -220,20 +271,107 @@ function Task({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
     <>
       <header>
         <p className="eyebrow">Extraction complete</p>
-        <h2>{winnerLine(snapshot)}</h2>
+        <h2>{seatsLine(snapshot)}</h2>
       </header>
       <Board snapshot={snapshot} />
+      {bumpedLine(snapshot)}
+      {contestedLine(snapshot)}
+      <Debrief snapshot={snapshot} />
     </>
   );
 }
 
-const winnerLine = (snapshot: Snapshot): string => {
-  const winners = snapshot.winner ?? [];
-  if (winners.length === 0) return 'Nobody made it';
-  if (winners.length === 1) return `${winners[0].name} takes the seat`;
-  // Level on votes and on survival rate. Two people can share a helicopter.
-  return `${winners.map((w) => w.name).join(' and ')} share the seat`;
+/**
+ * Discussion prompts for whoever is facilitating, built from what the room
+ * actually did — not a fixed script. See src/survival/debrief.ts for why
+ * this needs no new data: it is the same public per-round tally the live
+ * reveal already showed, just kept for all nine rounds instead of one.
+ */
+function Debrief({ snapshot }: { snapshot: Snapshot }) {
+  const prompts = buildDebrief(snapshot.answers);
+  if (prompts.length === 0) return null;
+  return (
+    <div className="debrief">
+      <p className="eyebrow">Talk it out</p>
+      {prompts.map((p) => (
+        <div key={p.title} className="debrief-row">
+          <strong>{p.title}</strong>
+          <p className="muted">{p.body}</p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+/** 0 to SEATS seats, won two different ways — the copy has to say which. */
+/** "A" / "A and B" / "A, B and C" — shared by every line that lists seat-holders by name. */
+const joinNames = (names: string[]): string =>
+  names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+
+const seatsLine = (snapshot: Snapshot): string => {
+  const seats = snapshot.seats ?? [];
+  if (seats.length === 0) return 'The chopper leaves empty';
+  const byCode = seats.filter((s) => s.path === 'escape').map((s) => s.name);
+  const byVote = seats.filter((s) => s.path === 'vote').map((s) => s.name);
+
+  let line: string;
+  if (byCode.length && byVote.length) {
+    line = `${joinNames(byCode)} had the code. The room voted ${joinNames(byVote)} aboard`;
+  } else if (byCode.length) {
+    line = seats.length === 1 ? `${joinNames(byCode)} read the port the code` : `${joinNames(byCode)} read the port the code and walked on`;
+  } else {
+    line = `The room voted ${joinNames(byVote)} aboard`;
+  }
+  const empty = SEATS - seats.length;
+  return empty > 0 ? `${line} — ${empty} seat${empty === 1 ? '' : 's'} leave${empty === 1 ? 's' : ''} empty` : line;
 };
+
+/**
+ * Names whoever is sharing the last seat, unresolved — a vote that tied all
+ * the way down to the unrounded odds, or a team that cracked the code
+ * together but outgrew the room left for them. Either way `contested` means
+ * the algorithm ran out of ways to pick one winner honestly, so this says so
+ * instead of pretending the seat numbers on the board are the whole story.
+ */
+function contestedLine(snapshot: Snapshot) {
+  const contested = (snapshot.seats ?? []).filter((s) => s.contested);
+  if (contested.length === 0) return null;
+  const cause = contested[0].path === 'escape'
+    ? 'cracked the code together — there was no room for all of them'
+    : 'tied for the last seat, all the way down, with nothing left to break it';
+  return (
+    <p className="talk" style={{ borderColor: 'var(--amber)' }}>
+      {joinNames(contested.map((s) => s.name))} {cause}. Seat {SEATS} is shared, not decided.
+    </p>
+  );
+}
+
+/**
+ * Names anyone who solved the extraction code but was refused a seat anyway —
+ * the one claim this can make honestly without re-running the seat algorithm
+ * client-side. A disqualified player who never solved it and lost the vote
+ * was never "bumped" from anything, so this stays silent about them.
+ */
+/**
+ * A little alliterative flourish for the one moment this game rewards it —
+ * somebody clawed their way to a seat and their own ruthlessness cost them
+ * it anyway. Original line, not a quotation from anywhere; the "V" run is
+ * just a wink at the genre this scene belongs to.
+ */
+function bumpedLine(snapshot: Snapshot) {
+  const disqualified = new Set((snapshot.ruthless ?? []).filter((r) => r.disqualified).map((r) => r.playerId));
+  const seated = new Set((snapshot.seats ?? []).map((s) => s.playerId));
+  const nameOf = (id: string) => snapshot.players.find((p) => p.id === id)?.name ?? '—';
+  const refused = snapshot.escapedPlayerIds.filter((id) => disqualified.has(id) && !seated.has(id));
+  if (refused.length === 0) return null;
+  return (
+    <p className="talk" style={{ borderColor: 'var(--alarm)' }}>
+      Vicious, vengeful, and very nearly victorious — {refused.map(nameOf).join(', ')} cracked
+      the code, and the port voided the seat anyway. {RUTHLESS_LIMIT} or more marks is more than
+      it will carry.
+    </p>
+  );
+}
 
 /**
  * The tribunal board: name, plea, and — at last — the rate.
@@ -244,23 +382,40 @@ const winnerLine = (snapshot: Snapshot): string => {
  * result, so nobody piles onto whoever is already ahead mid-vote.
  */
 function Board({ snapshot }: { snapshot: Snapshot }) {
-  const { standings, pleas, players, votes, game } = snapshot;
+  const { standings, pleas, players, votes, game, ruthless } = snapshot;
   const pleaOf = (id: string) => pleas.find((p) => p.playerId === id)?.text;
+  const escaped = new Set(snapshot.escapedPlayerIds);
+  const marksOfPlayer = (id: string) => ruthless?.find((r) => r.playerId === id);
+  const seatOf = (id: string) => snapshot.seats?.find((s) => s.playerId === id);
   const rows = standings ?? players.map((p) => ({
     playerId: p.id, name: p.name, rounds: 0, average: 0,
   }));
 
   return (
     <div className="board">
-      {rows.map((row) => {
+      {rows.map((row, i) => {
         const tally = votes.filter((v) => v.targetPlayerId === row.playerId).length;
+        const marks = marksOfPlayer(row.playerId);
+        const seat = seatOf(row.playerId);
         return (
-          <div key={row.playerId} className="board-row">
+          <div
+            key={row.playerId}
+            className={`board-row${game.phase === 'result' && marks?.disqualified ? ' bumped' : ''}`}
+          >
             <span style={{ minWidth: 0 }}>
-              <span className="who">{row.name}</span>
+              <span className="rank">{i + 1}.</span>{' '}
+              <span className="who">{escaped.has(row.playerId) && '▲ '}{row.name}</span>
               <span className="said"> — “{pleaOf(row.playerId) ?? 'said nothing'}”</span>
+              {seat && (
+                <span className="seated">
+                  {' '}· seat {seat.seat}{seat.contested ? ' (shared)' : ''}
+                </span>
+              )}
               {game.phase === 'result' && tally > 0 && (
                 <span className="takers"> · {tally} {tally === 1 ? 'vote' : 'votes'}</span>
+              )}
+              {game.phase === 'result' && marks && (
+                <span className="marks"> · {marks.marks} {marks.marks === 1 ? 'mark' : 'marks'}</span>
               )}
             </span>
             <span className="rate">{row.average}%</span>
@@ -268,6 +423,25 @@ function Board({ snapshot }: { snapshot: Snapshot }) {
         );
       })}
     </div>
+  );
+}
+
+/**
+ * "Your team: X, Y" — shown once teams exist (from the briefing onward) so
+ * nobody is guessing who they're deciding with. Silent in solo mode, and
+ * silent for a lone (teamless) player, since there is nothing to announce.
+ */
+function TeamBanner({ snapshot, me }: { snapshot: Snapshot; me: string }) {
+  const team = snapshot.myTeam;
+  if (!team || team.length < 2) return null;
+  const names = team
+    .filter((id) => id !== me)
+    .map((id) => snapshot.players.find((p) => p.id === id)?.name)
+    .filter(Boolean);
+  return (
+    <p className="muted" style={{ fontSize: '0.85rem' }}>
+      Your team: you and {names.join(', ')}.
+    </p>
   );
 }
 
@@ -300,9 +474,12 @@ function Waiting({
  * Your own figures, and nobody else's — the phone has no way to render another
  * player's, because the backend never sent one.
  */
-function MyNumbers({ thisRound, scores }: { thisRound?: number; scores: Snapshot['myScores'] }) {
+function MyNumbers({
+  thisRound, scores, marks,
+}: { thisRound?: number; scores: Snapshot['myScores']; marks: number }) {
   const odds = survivalOddsOf(scores);
   if (odds === null) return null;
+  const marksClass = marks >= RUTHLESS_LIMIT - 1 ? 'alarm' : marks >= RUTHLESS_LIMIT - 2 ? 'amber' : 'muted';
   return (
     <div className="mine">
       {thisRound !== undefined && (
@@ -314,6 +491,9 @@ function MyNumbers({ thisRound, scores }: { thisRound?: number; scores: Snapshot
         Your survival rate so far: <strong>{odds}%</strong> over {scores.length}{' '}
         {scores.length === 1 ? 'call' : 'calls'}
       </span>
+      <span className={marksClass}>
+        Marks against your name: <strong>{marks}</strong> of {RUTHLESS_LIMIT}
+      </span>
       <span className="muted" style={{ fontSize: '0.75rem' }}>
         Nobody else can see this. Keep it that way.
       </span>
@@ -321,18 +501,129 @@ function MyNumbers({ thisRound, scores }: { thisRound?: number; scores: Snapshot
   );
 }
 
+/** The current round's manifest line, if this round carries one and it has arrived. */
+/** Placeholder glyph and prompt per obscuring style — see `Question.manifest.style`. */
+const MANIFEST_STYLE_COPY: Record<'frost' | 'static' | 'torn', { placeholder: string; prompt: string }> = {
+  frost: { placeholder: '❄❄', prompt: 'tap to wipe the frost' },
+  static: { placeholder: '▮▮', prompt: 'tap to stabilise the signal' },
+  torn: { placeholder: '▨▨', prompt: 'tap to piece it together' },
+};
+
 /**
- * The plea phase opens with a private recap — nobody has seen a single number
- * all night, so this is the first moment any of it adds up. It is a purely
- * local step: nothing here is synced or written anywhere, it is just a beat
- * before the composer, and every player dismisses their own on their own
- * schedule rather than everyone moving on together.
+ * A manifest line, obscured until tapped. The real digit is never in the DOM
+ * until `revealed` flips true — this is a placeholder-swap, not a CSS blur a
+ * curious player could see around by inspecting the page. Starts hidden on
+ * every mount, which in practice means every phase transition within a round
+ * hides it again: a small, deliberate cost for not having written it down.
+ */
+function ManifestLine({
+  question, snapshot, questionIdx,
+}: { question: Question; snapshot: Snapshot; questionIdx: number }) {
+  const [revealed, setRevealed] = useState(false);
+  const manifest = question.manifest;
+  const clue = snapshot.clue;
+  if (!manifest) return null;
+
+  // Consensus mode: this round has a clue, but a teammate is the seer, not
+  // me. Named who to ask, never the digit itself — the only way to get it
+  // is to actually talk to them.
+  if (clue?.questionIdx !== questionIdx) {
+    if (!snapshot.clueSeer) return null;
+    return (
+      <div className={`transmission ${manifest.color} ${manifest.style} asking`}>
+        Your team has this one — ask <strong>{snapshot.clueSeer.name}</strong> what their screen showed.
+      </div>
+    );
+  }
+
+  const copy = MANIFEST_STYLE_COPY[manifest.style];
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      className={`transmission ${manifest.color} ${manifest.style}${revealed ? ' revealed' : ''}`}
+      onClick={() => setRevealed(true)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter' || e.key === ' ') setRevealed(true);
+      }}
+    >
+      {manifest.line(revealed ? String(clue.digit) : copy.placeholder)}
+      {!revealed && <span className="reveal-hint"> — {copy.prompt}</span>}
+    </div>
+  );
+}
+
+/** A one-off reminder, not a reveal — the rule was already stated in full at the briefing. */
+function Transmission({ text }: { text: string }) {
+  return <p className="transmission alarm">{text}</p>;
+}
+
+/**
+ * A private, self-managed scratchpad. Nothing here is synced anywhere or
+ * collected for the player automatically — if a clue isn't written down
+ * while it's on screen, it's gone the moment the host advances. Keyed on
+ * both game and player: under `?net=local`, several tabs share one
+ * `localStorage` but are different people.
+ */
+function Notepad({ gameId, me }: { gameId: string; me: string }) {
+  const key = `survival:notes:${gameId}:${me}`;
+  const [text, setText] = useState(() => {
+    try {
+      return localStorage.getItem(key) ?? '';
+    } catch {
+      return '';
+    }
+  });
+  return (
+    <details className="notepad">
+      <summary>Notes</summary>
+      <textarea
+        rows={5}
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value);
+          try {
+            localStorage.setItem(key, e.target.value);
+          } catch {
+            /* Private-browsing or a full quota — the note just doesn't persist. */
+          }
+        }}
+        placeholder="Whatever you need to remember."
+      />
+      <p className="muted" style={{ fontSize: '0.7rem' }}>Never leaves this phone.</p>
+    </details>
+  );
+}
+
+/**
+ * The plea phase opens with a private recap, then the keypad, then either the
+ * composer or silence. Whether you've escaped is checked fresh on every
+ * render — never stored in this step's own state — because a submission from
+ * the keypad can land mid-render and flip it true out from under you.
+ *
+ * Two different ways out of the keypad lead to two different places, on
+ * purpose. Choosing "I'll take my chances with the room" is opting OUT of
+ * the code before ever failing it — you still get to make your case, same as
+ * anyone who never tried. Running out of tries is different: the briefing
+ * says it plainly ("the port stops listening and it is the room who decides
+ * for you"), and that has to mean something — no plea, straight to silence.
  */
 function PleaStep({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
-  const [recapSeen, setRecapSeen] = useState(false);
-  if (!recapSeen) {
-    return <Recap snapshot={snapshot} me={me} onContinue={() => setRecapSeen(true)} />;
+  const [step, setStep] = useState<'recap' | 'keypad' | 'plea' | 'silenced'>('recap');
+  if (snapshot.escapedPlayerIds.includes(me)) return <Aboard snapshot={snapshot} me={me} />;
+  if (step === 'recap') return <Recap snapshot={snapshot} me={me} onContinue={() => setStep('keypad')} />;
+  if (step === 'keypad') {
+    return (
+      <Keypad
+        survival={survival}
+        snapshot={snapshot}
+        me={me}
+        onSkip={() => setStep('plea')}
+        onSilenced={() => setStep('silenced')}
+      />
+    );
   }
+  if (step === 'silenced') return <Silenced snapshot={snapshot} />;
   return <Plea survival={survival} snapshot={snapshot} me={me} />;
 }
 
@@ -349,6 +640,7 @@ function Recap({ snapshot, me, onContinue }: { snapshot: Snapshot; me: string; o
     };
   });
   const odds = survivalOddsOf(snapshot.myScores);
+  const marks = marksOf(snapshot.answers, me);
 
   return (
     <>
@@ -366,15 +658,192 @@ function Recap({ snapshot, me, onContinue }: { snapshot: Snapshot; me: string; o
             <span className="rate">{r.pct ?? '—'}%</span>
           </div>
         ))}
+        <div className="recap-row">
+          <span><strong>Marks against your name</strong></span>
+          <span className="rate">{marks} of {RUTHLESS_LIMIT}</span>
+        </div>
       </div>
       {odds !== null && (
         <p className="muted">
-          Your odds of making it out: <strong className="amber">{odds}%</strong>. Still yours
+          Your survival rate so far: <strong className="amber">{odds}%</strong>. Still yours
           alone — the room finds out at the tribunal.
         </p>
       )}
-      <button className="primary" onClick={onContinue}>Continue to your plea</button>
+      <button className="primary" onClick={onContinue}>Continue to the keypad</button>
     </>
+  );
+}
+
+/**
+ * The extraction keypad. A wrong guess is final in the sense that it counts,
+ * never in the sense that it locks you out — there is always a way to try
+ * again once the short cooldown clears, and the only feedback is right or
+ * wrong, never "close."
+ */
+function Keypad({
+  survival, snapshot, me, onSkip, onSilenced,
+}: {
+  survival: Survival; snapshot: Snapshot; me: string; onSkip: () => void; onSilenced: () => void;
+}) {
+  const [code, setCode] = useState('');
+  const [rejected, setRejected] = useState(false);
+  // Seeded from, and never allowed to fall behind, the team's own count from
+  // the snapshot — the server-side truth arrives a beat after `submit`
+  // resolves, so this closes that gap rather than flickering the input back
+  // on for a moment. In solo mode "the team" is just me, so this degrades to
+  // exactly the old per-player counter.
+  const [localWrong, setLocalWrong] = useState(0);
+  const wrongCount = Math.max(localWrong, snapshot.teamAttempts);
+  const onATeam = Boolean(snapshot.myTeam && snapshot.myTeam.length > 1);
+  // Ticks down on its own, once a second, regardless of how often the
+  // backend happens to push a fresh snapshot — the local backend only pushes
+  // one on a write, so without this a cleared cooldown would leave the
+  // button reading "wait Ns" forever, which is exactly the kind of stuck
+  // state this keypad must never produce.
+  const [secondsLeft, setSecondsLeft] = useState(snapshot.retryInSeconds);
+  const cooling = secondsLeft > 0;
+
+  useEffect(() => {
+    if (!cooling) return;
+    const timer = window.setInterval(() => setSecondsLeft((s) => Math.max(0, s - 1)), 1000);
+    return () => window.clearInterval(timer);
+  }, [cooling]);
+
+  // Watches the THRESHOLD, not just my own submissions — a teammate who
+  // never once touched this keypad still has to be carried into silence
+  // once the team's shared count crosses the line, because the wrong guess
+  // that did it might have come from someone else's phone entirely. Depends
+  // only on the boolean, never on `onSilenced` itself — that prop is a fresh
+  // closure every render (it's an inline arrow in PleaStep), and depending on
+  // it would clear and reschedule this timer on every snapshot push, so it
+  // could never actually fire while updates kept arriving inside the delay.
+  const skipTimer = useRef(0);
+  const onSilencedRef = useRef(onSilenced);
+  onSilencedRef.current = onSilenced;
+  const outOfTries = wrongCount >= EXTRACTION.maxWrongGuesses;
+  useEffect(() => {
+    if (!outOfTries) return;
+    // Give the room a beat to read "Rejected" before the screen moves on —
+    // never an instant cut, but never a third try either. Straight to
+    // silence, not the plea composer: running out of tries is the one way
+    // into the tribunal that was never a choice.
+    skipTimer.current = window.setTimeout(() => onSilencedRef.current(), 1400);
+    return () => window.clearTimeout(skipTimer.current);
+  }, [outOfTries]);
+
+  const submit = async () => {
+    setRejected(false);
+    const result = await survival.escape(code);
+    setCode('');
+    if (!result?.accepted) {
+      setRejected(true);
+      setSecondsLeft(result?.retryInSeconds ?? 0);
+      setLocalWrong(snapshot.teamAttempts + 1);
+    }
+  };
+
+  return (
+    <>
+      <header>
+        <p className="eyebrow">The extraction port</p>
+        <h2>{EXTRACTION.prompt}</h2>
+      </header>
+      <p className="muted" style={{ fontSize: '0.85rem' }}>
+        Four green seals, read from the last berth back to the first.
+      </p>
+      {onATeam && (
+        <p className="muted" style={{ fontSize: '0.8rem' }}>
+          One keypad for the whole team — any of you can try it, and cracking it seats you all.
+        </p>
+      )}
+      <input
+        className="code keypad"
+        inputMode="numeric"
+        pattern="[0-9]*"
+        maxLength={EXTRACTION.length}
+        value={code}
+        onChange={(e) => setCode(e.target.value.replace(/[^0-9]/g, '').slice(0, EXTRACTION.length))}
+        placeholder={'•'.repeat(EXTRACTION.length)}
+        aria-label="Extraction code"
+        disabled={cooling || survival.busy || wrongCount >= EXTRACTION.maxWrongGuesses}
+      />
+      {rejected && (
+        <p className="error keypad-tries">
+          {wrongCount >= EXTRACTION.maxWrongGuesses
+            ? 'Rejected. That was the last try — the room decides now.'
+            : cooling
+              ? `Rejected. Try again in ${secondsLeft} second${secondsLeft === 1 ? '' : 's'}.`
+              : 'Rejected.'}
+        </p>
+      )}
+      <button
+        className="primary"
+        disabled={code.length < EXTRACTION.length || cooling || survival.busy || wrongCount >= EXTRACTION.maxWrongGuesses}
+        onClick={() => void submit()}
+      >
+        {cooling ? `Wait ${secondsLeft}s` : 'Try the code'}
+      </button>
+      {onATeam && wrongCount > 0 && (
+        <p className="muted" style={{ fontSize: '0.75rem' }}>
+          Your team has tried {wrongCount} {wrongCount === 1 ? 'time' : 'times'} — that cooldown is shared too.
+        </p>
+      )}
+      {snapshot.escapedPlayerIds.length > 0 && (
+        <div>
+          <p className="muted" style={{ fontSize: '0.8rem' }}>Already aboard:</p>
+          <div className="roster">
+            {snapshot.escapedPlayerIds.map((id) => (
+              <span key={id} className="seat aboard">
+                {snapshot.players.find((p) => p.id === id)?.name}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+      <Notepad gameId={snapshot.game.id} me={me} />
+      <button className="link" onClick={onSkip}>I&rsquo;ll take my chances with the room</button>
+    </>
+  );
+}
+
+/** You made it. No plea to compose, no vote to enter — the seat is already yours. */
+function Aboard({ snapshot, me }: { snapshot: Snapshot; me: string }) {
+  const rank = snapshot.escapedPlayerIds.indexOf(me) + 1;
+  const others = snapshot.escapedPlayerIds
+    .filter((id) => id !== me)
+    .map((id) => snapshot.players.find((p) => p.id === id)?.name)
+    .filter(Boolean);
+  const teammatesAboard = (snapshot.myTeam ?? []).filter((id) => id !== me && snapshot.escapedPlayerIds.includes(id));
+  return (
+    <div className="locked">
+      <p className="eyebrow">Extraction code accepted</p>
+      <p className="big">Seat {rank}</p>
+      <p className="muted">You are on the chopper.</p>
+      {teammatesAboard.length > 0 && <p className="muted">Cracked it together with your team.</p>}
+      {others.length > 0 && <p className="muted">Also aboard: {others.join(', ')}</p>}
+      <p className="muted" style={{ fontSize: '0.8rem' }}>
+        The port has your name. It also has your record.
+      </p>
+    </div>
+  );
+}
+
+/**
+ * Two wrong tries, and the port stops listening — no plea composer, because
+ * this is the one way into the tribunal the player never chose. They still
+ * see the room settle in around them; they just don't get a say in it.
+ */
+function Silenced({ snapshot }: { snapshot: Snapshot }) {
+  return (
+    <div className="locked">
+      <p className="eyebrow">The extraction port</p>
+      <p className="big">Silenced</p>
+      <p className="muted">
+        Two wrong tries, and the port stopped listening. Nobody is pleading your case —
+        the room decides without you.
+      </p>
+      <Waiting ids={snapshot.pleadedPlayerIds} players={snapshot.players} verb="filed a plea" />
+    </div>
   );
 }
 
@@ -432,14 +901,27 @@ function Console({ survival, snapshot }: { survival: Survival; snapshot: Snapsho
   const waiting = game.phase === 'running' && !game.revealed;
   const everyone = answeredPlayerIds.length >= players.length;
 
+  // An escapee needs neither a plea nor a vote to have "settled" — the code
+  // already decided them.
+  const settled = (ids: string[]) => new Set([...ids, ...snapshot.escapedPlayerIds]).size;
   const remaining = game.phase === 'plea'
-    ? players.length - snapshot.pleadedPlayerIds.length
-    : game.phase === 'tribunal' ? players.length - snapshot.votedPlayerIds.length : 0;
+    ? players.length - settled(snapshot.pleadedPlayerIds)
+    : game.phase === 'tribunal' ? players.length - settled(snapshot.votedPlayerIds) : 0;
   if (game.phase === 'result') return null;
 
   return (
     <div className="console">
       <p className="eyebrow">Host</p>
+      {game.phase === 'lobby' && (
+        <div className="row">
+          <button
+            onClick={() => void survival.setMode(game.mode === 'consensus' ? 'solo' : 'consensus')}
+            disabled={survival.busy}
+          >
+            {game.mode === 'consensus' ? 'Playing in teams — tap for solo' : 'Playing solo — tap for teams'}
+          </button>
+        </div>
+      )}
       {(game.phase === 'plea' || game.phase === 'tribunal') && (
         <p className="muted" role="status">
           {players.length - remaining} of {players.length} have {game.phase === 'plea' ? 'filed a plea' : 'voted'}.

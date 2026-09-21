@@ -523,11 +523,12 @@ check('a tied vote is broken by the higher survival average',
   winner.length === 1 && winner[0].name === 'Cara',
   winner.map((w) => `${w.name} ${w.votes}v ${w.average}%`).join(', '));
 
-console.log('\n--- two players who round to the same "0.0%" but are not tied ---');
-// Seven compounding rounds routinely lands everyone near zero. Both of these
-// players show "0.0%" once rounded, and if the ranking or the tie-break ever
-// compared THAT figure instead of the unrounded one, this would misreport a
-// real difference as a draw.
+console.log('\n--- two players who round to the same "64.0%" but are not tied ---');
+// Geometric mean spreads odds across a legible range, but two different
+// precise values can still land on the same rounded display by coincidence.
+// Both of these players show "64.0%" once rounded, and if the ranking or the
+// tie-break ever compared THAT figure instead of the unrounded one, this
+// would misreport a real difference as a draw.
 const PING = '88888888-8888-8888-8888-888888888888';
 const PONG = '99999999-9999-9999-9999-999999999999';
 await be(SHOST);
@@ -537,18 +538,20 @@ const pPing = (await db.query(`select * from survival_join($1,'Ping')`, [pgame.c
 await be(PONG);
 const pPong = (await db.query(`select * from survival_join($1,'Pong')`, [pgame.code])).rows[0];
 
-// Written directly rather than played through seven real rounds: the point
-// here is the arithmetic on already-scored rows, not how they got scored.
+// Written directly rather than played through real rounds: the point here is
+// the arithmetic on already-scored rows, not how they got scored.
 await be(SHOST);
 await db.exec('reset role;');
-for (const pct of [10, 10, 10, 10]) {
+// sqrt(0.63 * 0.65) ≈ 63.992% precise, rounds to 64.0%.
+for (const pct of [63, 65]) {
   await db.query(
     `insert into survival_scores (game_id, player_id, question_idx, survival_pct)
      values ($1,$2,(select coalesce(max(question_idx),-1)+1 from survival_scores
                      where game_id=$1 and player_id=$2),$3)`,
     [pgame.id, pPing.id, pct]);
 }
-for (const pct of [10, 10, 10, 15]) {
+// sqrt(0.64 * 0.64) = 64.0% precise exactly — same rounded figure, still ahead underneath.
+for (const pct of [64, 64]) {
   await db.query(
     `insert into survival_scores (game_id, player_id, question_idx, survival_pct)
      values ($1,$2,(select coalesce(max(question_idx),-1)+1 from survival_scores
@@ -562,10 +565,13 @@ await db.query(`update survival_games set phase='tribunal' where id=$1`, [pgame.
 
 await be(PING);
 const rounded = (await db.query(`select * from survival_standings($1)`, [pgame.id])).rows;
+// Ref (the host) never scored a round and legitimately shows 0% — only Ping
+// and Pong are the ones under test here.
+const pingPong = rounded.filter((r) => r.name === 'Ping' || r.name === 'Pong');
 check('both players display as the same rounded figure',
-  rounded.every((r) => Number(r.average) === 0),
+  pingPong.every((r) => Number(r.average) === 64),
   rounded.map((r) => `${r.name} ${r.average}%`).join(', '));
-check('but Pong (0.015%) is ranked above Ping (0.01%) underneath it',
+check('but Pong (64.0% exactly) is ranked above Ping (63.992%) underneath it',
   rounded[0]?.name === 'Pong',
   rounded.map((r) => r.name).join(' > '));
 
@@ -580,6 +586,256 @@ check('a vote tie is broken by the same unrounded figure, not the display one',
   tieBreak.length === 1 && tieBreak[0].name === 'Pong',
   tieBreak.map((w) => `${w.name} ${w.votes}v ${w.average}%`).join(', '));
 
+console.log('\n=== the extraction code and the ruthlessness trap ===');
+
+const EHOST = '10101010-1010-1010-1010-101010101010';
+const ECARA = '20202020-2020-2020-2020-202020202020';
+const EDEV = '30303030-3030-3030-3030-303030303030';
+const ELEE = '40404040-4040-4040-4040-404040404040';
+
+await be(EHOST);
+const egame = (await db.query(`select * from survival_create('Hana')`)).rows[0];
+await be(ECARA);
+const eCara = (await db.query(`select * from survival_join($1,'Cara')`, [egame.code])).rows[0];
+await be(EDEV);
+const eDev = (await db.query(`select * from survival_join($1,'Dev')`, [egame.code])).rows[0];
+await be(ELEE);
+const eLee = (await db.query(`select * from survival_join($1,'Lee')`, [egame.code])).rows[0];
+
+console.log('\n--- the sealed puzzle has no way in ---');
+await be(ECARA);
+check('a player cannot read survival_keys',
+  !!(await refuses(`select * from survival_keys`)));
+check('a player cannot call the generator',
+  !!(await refuses(`select survival_generate_key($1)`, [egame.id])));
+check('a player cannot read the sealed ruthless threshold',
+  !!(await refuses(`select survival_ruthless_threshold()`)));
+check('a player cannot ask someone else\'s ruthless marks directly',
+  !!(await refuses(`select survival_ruthless_marks($1,$2)`, [egame.id, eDev.id])));
+check('nor whether they are disqualified',
+  !!(await refuses(`select survival_disqualified($1,$2)`, [egame.id, eDev.id])));
+check('a player cannot read the contenders view directly',
+  !!(await refuses(`select * from survival_contenders($1)`, [egame.id])));
+check('survival_seats refuses before the result',
+  !!(await refuses(`select * from survival_seats($1)`, [egame.id])));
+check('survival_key_reveal refuses before the result',
+  !!(await refuses(`select * from survival_key_reveal($1)`, [egame.id])));
+check('survival_ruthless refuses before the result',
+  !!(await refuses(`select * from survival_ruthless($1)`, [egame.id])));
+check('nobody can insert an escape directly',
+  !!(await refuses(`insert into survival_escapes (game_id, player_id, solve_order) values ($1,$2,1)`,
+    [egame.id, eCara.id])));
+
+console.log('\n--- the code is genuinely derivable from the clues, and different every game ---');
+await db.exec('reset role;');
+const key = (await db.query(`select * from survival_keys where game_id=$1`, [egame.id])).rows[0];
+const digits = Object.fromEntries((await db.query(
+  `select question_idx, digit from survival_clue_digits where game_id=$1`, [egame.id])).rows
+  .map((r) => [r.question_idx, r.digit]));
+check('exactly seven rounds carry a digit', Object.keys(digits).length === 7,
+  Object.keys(digits).sort((a, b) => a - b).join(','));
+const recomputed = `${digits[3]}${digits[8]}${digits[5]}${digits[1]}`;
+check('the code is the green berths, read from the last back to the first',
+  recomputed === key.code, `${recomputed} vs ${key.code}`);
+
+const otherCodes = new Set();
+for (let i = 0; i < 8; i += 1) {
+  const g = (await db.query(`select * from survival_create('Ref')`)).rows[0];
+  otherCodes.add((await db.query(`select code from survival_keys where game_id=$1`, [g.id])).rows[0].code);
+}
+check('every game gets its own code', otherCodes.size >= 7, `${otherCodes.size} distinct of 8`);
+
+console.log('\n--- clues are ephemeral, gone the instant the host advances ---');
+await be(EHOST);
+await db.query(`select survival_advance($1)`, [egame.id]); // briefing
+await db.query(`select survival_advance($1)`, [egame.id]); // running, first warm-up
+for (let i = 0; i < 2; i += 1) {
+  await db.query(`select survival_reveal($1)`, [egame.id]);
+  await db.query(`select survival_advance($1)`, [egame.id]);
+} // now at question 0 — carries no clue (Q0 is a decoy round, still delivers a digit)
+
+await be(ECARA);
+let currentClue = (await db.query(
+  `select * from survival_clue_digits where game_id=$1`, [egame.id])).rows;
+check('question 0 (a decoy round) still delivers its one digit', currentClue.length === 1 &&
+  currentClue[0].question_idx === 0);
+
+await be(EHOST);
+await db.query(`select survival_reveal($1)`, [egame.id]);
+await db.query(`select survival_advance($1)`, [egame.id]); // → question 1
+
+await be(ECARA);
+currentClue = (await db.query(`select * from survival_clue_digits where game_id=$1`, [egame.id])).rows;
+check('once the host moves on, the previous round\'s digit is gone from view',
+  currentClue.length === 1 && currentClue[0].question_idx === 1);
+
+console.log('\n--- a wrong guess is recorded, never leaks, and never locks anyone out ---');
+const wrong = (await db.query(`select * from survival_escape($1,'0000')`, [egame.id])).rows[0];
+check('a wrong guess is refused', wrong.correct === false);
+check('it carries a retry countdown, not a lockout', wrong.retry_in_seconds > 0);
+let cooling = null;
+try {
+  await db.query(`select * from survival_escape($1,'1111')`, [egame.id]);
+} catch (e) { cooling = e.message; }
+check('trying again inside the cooldown is refused', !!cooling, (cooling ?? '').split('\n')[0]);
+
+await be(EDEV);
+const devProgress = (await db.query(`select * from survival_progress($1)`, [egame.id])).rows[0];
+check('one player\'s cooldown never touches another\'s', devProgress.retry_in_seconds === 0);
+
+await be(EHOST);
+await db.exec('reset role;');
+await db.query(
+  `update survival_attempts set created_at = now() - interval '1 hour' where game_id=$1`, [egame.id]);
+await be(ECARA);
+const stillWrong = (await db.query(`select * from survival_escape($1,'0000')`, [egame.id])).rows[0];
+check('after the cooldown elapses, trying again is allowed', stillWrong.correct === false);
+
+console.log('\n--- the race: solve order matches submission order, for every viewer ---');
+const realCode = key.code;
+await be(EDEV);
+const devSolve = (await db.query(`select * from survival_escape($1,$2)`, [egame.id, realCode])).rows[0];
+check('a correct code is accepted', devSolve.correct === true && devSolve.solve_order === 1);
+await be(ELEE);
+const leeSolve = (await db.query(`select * from survival_escape($1,$2)`, [egame.id, realCode])).rows[0];
+check('the second solver gets the next order', leeSolve.correct === true && leeSolve.solve_order === 2);
+
+for (const uid of [EDEV, ELEE, ECARA]) {
+  await be(uid);
+  const order = (await db.query(`select * from survival_progress($1)`, [egame.id])).rows[0].escaped;
+  check(`escaped order agrees for every viewer (${uid.slice(0, 4)})`,
+    JSON.stringify(order) === JSON.stringify([eDev.id, eLee.id]));
+}
+
+await be(EDEV);
+check('an already-escaped player cannot submit again',
+  !!(await refuses(`select * from survival_escape($1,$2)`, [egame.id, realCode])));
+
+console.log('\n--- disqualification skips a seat, on both paths ---');
+// Cara solves too, wrong-order deliberately (third), and is made ruthless
+// directly — this is the headline scenario: solved first among the
+// remaining two, refused anyway, the seat passes on. Clear her cooldown
+// again first — her own earlier wrong guesses (above) are still fresh.
+await db.exec('reset role;');
+await db.query(
+  `update survival_attempts set created_at = now() - interval '1 hour' where game_id=$1`, [egame.id]);
+await be(ECARA);
+const caraSolve = (await db.query(`select * from survival_escape($1,$2)`, [egame.id, realCode])).rows[0];
+check('a third solver gets order 3', caraSolve.correct === true && caraSolve.solve_order === 3);
+
+await db.exec('reset role;');
+await db.query(`update survival_options set ruthless = true where question_idx = 0 and option_index = 1`);
+await db.query(
+  `insert into survival_answers (game_id, player_id, question_idx, option_index, auto_assigned)
+   values ($1,$2,0,1,false)
+   on conflict (game_id, player_id, question_idx) do update set option_index = 1, auto_assigned = false`,
+  [egame.id, eCara.id]);
+for (const q of [1, 2, 3, 4]) {
+  await db.query(
+    `insert into survival_answers (game_id, player_id, question_idx, option_index, auto_assigned)
+     values ($1,$2,$3,0,false)
+     on conflict (game_id, player_id, question_idx) do update set option_index = 0, auto_assigned = false`,
+    [egame.id, eCara.id, q]);
+}
+await db.query(`update survival_options set ruthless = true where question_idx in (1,2,3,4) and option_index = 0`);
+
+await be(EHOST);
+// Question 1 is the current round and is still unrevealed (the race tests
+// above only advanced into it) — reveal it first, then advance/reveal the rest.
+await db.query(`select survival_reveal($1)`, [egame.id]);
+for (let q = 2; q <= 8; q += 1) {
+  await db.query(`select survival_advance($1)`, [egame.id]);
+  await db.query(`select survival_reveal($1)`, [egame.id]);
+}
+await db.query(`select survival_advance($1)`, [egame.id]); // → plea
+await db.query(`select survival_advance($1)`, [egame.id]); // → tribunal
+
+await be(EDEV);
+const votedForEscapee = await refuses(`select survival_vote($1,$2)`, [egame.id, eLee.id]);
+check('voting for an already-escaped player is refused', !!votedForEscapee,
+  (votedForEscapee ?? '').split('\n')[0]);
+
+check('survival_ruthless still refuses mid-tribunal, not just before it',
+  !!(await refuses(`select * from survival_ruthless($1)`, [egame.id])));
+
+// Hana (the host) is made ruthless too, but never escapes — this is the
+// vote-path headline scenario: the room votes her the most seats and only
+// learns she was refused when the seats are actually decided.
+await db.exec('reset role;');
+const eHost = (await db.query(
+  `select id from survival_players where game_id=$1 and user_id=$2`, [egame.id, EHOST])).rows[0];
+await db.query(
+  `insert into survival_answers (game_id, player_id, question_idx, option_index, auto_assigned)
+   values ($1,$2,0,1,false)
+   on conflict (game_id, player_id, question_idx) do update set option_index = 1, auto_assigned = false`,
+  [egame.id, eHost.id]);
+for (const q of [1, 2, 3, 4]) {
+  await db.query(
+    `insert into survival_answers (game_id, player_id, question_idx, option_index, auto_assigned)
+     values ($1,$2,$3,0,false)
+     on conflict (game_id, player_id, question_idx) do update set option_index = 0, auto_assigned = false`,
+    [egame.id, eHost.id, q]);
+}
+
+await be(EDEV);
+const votedForRuthlessHost = await refuses(`select survival_vote($1,$2)`, [egame.id, eHost.id]);
+check('a vote for a disqualified-but-not-escaped player is accepted, not refused',
+  !votedForRuthlessHost, votedForRuthlessHost ?? '(accepted)');
+await be(ELEE);
+await db.query(`select survival_vote($1,$2)`, [egame.id, eHost.id]);
+
+await be(EHOST);
+await db.query(`select survival_advance($1)`, [egame.id]); // → result
+
+await be(ELEE);
+const ruthless = (await db.query(`select * from survival_ruthless($1)`, [egame.id])).rows;
+const caraRow = ruthless.find((r) => r.player_id === eCara.id);
+check('Cara is flagged disqualified', caraRow?.disqualified === true, `${caraRow?.marks} marks`);
+const hostRow = ruthless.find((r) => r.player_id === eHost.id);
+check('Hana (the host) is flagged disqualified too', hostRow?.disqualified === true, `${hostRow?.marks} marks`);
+
+const seats = (await db.query(`select * from survival_seats($1)`, [egame.id])).rows;
+check('the disqualified first-among-remaining solver holds no seat',
+  !seats.some((s) => s.player_id === eCara.id));
+check('the disqualified vote leader holds no seat either, despite the votes she got',
+  !seats.some((s) => s.player_id === eHost.id));
+check('the seats that were earnable went to eligible people',
+  seats.every((s) => s.player_id === eDev.id || s.player_id === eLee.id || s.path === 'vote'));
+
+const keyReveal = (await db.query(`select * from survival_key_reveal($1)`, [egame.id])).rows[0];
+check('the code is only ever readable at result, and matches the derived one',
+  keyReveal.code === key.code);
+
+console.log('\n--- silence never earns a mark, structurally ---');
+// In the ORIGINAL playthrough (sgame) Cara alone ever answered anything for
+// real — question 0, deliberately, with the one dark option there — so her
+// single genuine mark is correct and expected. Dev, Hana and Lee never
+// answered a single real question; every one of their answers was
+// auto-assigned, including onto dark options on other questions, and none
+// of it should count.
+await be(SHOST);
+const quietRuthless = (await db.query(`select * from survival_ruthless($1)`, [sgame.id])).rows;
+const silentOnes = quietRuthless.filter((r) => r.name !== 'Cara');
+check('Cara\'s one deliberate dark pick correctly earns exactly one mark',
+  quietRuthless.find((r) => r.name === 'Cara')?.marks === 1);
+check('every player who never answered for real has zero marks, though some auto-picks were dark',
+  silentOnes.length === 3 && silentOnes.every((r) => r.marks === 0 && r.disqualified === false),
+  quietRuthless.map((r) => `${r.name}:${r.marks}`).join(' '));
+
+console.log('\n--- warm-ups structurally cannot carry a clue or a ruthless flag ---');
+await db.exec('reset role;');
+check('no clue digit exists for a negative question_idx',
+  (await db.query(`select 1 from survival_clue_digits where question_idx < 0`)).rows.length === 0);
+check('no sealed option row exists for a negative question_idx',
+  (await db.query(`select 1 from survival_options where question_idx < 0`)).rows.length === 0);
+
+console.log('\n--- nothing new leaks through the existing narrow RPCs ---');
+await be(CARA);
+const rd = (await db.query(`select * from survival_reveal_data($1, 0)`, [sgame.id])).rows[0];
+check('survival_reveal_data still carries no percentage or ruthless flag',
+  !Object.keys(rd).some((k) => /pct|ruth|dark|glyph|mark|digit/i.test(k)),
+  Object.keys(rd).join(','));
+
 console.log('\n--- and nothing of this travels over realtime ---');
 await db.exec('reset role;');
 const published = (await db.query(
@@ -587,10 +843,168 @@ const published = (await db.query(
 )).rows.map((r) => r.tablename);
 check('the lobby is published', published.includes('survival_games') &&
   published.includes('survival_players'));
-check('answers, scores, pleas and votes are not',
-  !['survival_answers', 'survival_scores', 'survival_pleas', 'survival_votes']
-    .some((t) => published.includes(t)),
+check('answers, scores, pleas, votes, clues, keys, attempts and escapes are not',
+  ![
+    'survival_answers', 'survival_scores', 'survival_pleas', 'survival_votes',
+    'survival_clue_digits', 'survival_keys', 'survival_attempts', 'survival_escapes',
+  ].some((t) => published.includes(t)),
   published.filter((t) => t.startsWith('survival')).join(', '));
+
+console.log('\n--- a broad audit: every internal-only helper is still revoked from PUBLIC ---');
+// Not every survival_* function is revoked from PUBLIC — the player-facing
+// actions (survival_answer, survival_vote, survival_join, ...) rely on the
+// ordinary `grant execute ... to authenticated` this schema has always used
+// for them, same as the base game. This audit is specifically about the
+// functions that would leak the seal, or the puzzle, if called directly —
+// the ones this feature's migrations (and the ones before it) explicitly
+// `revoke all ... from public` right after creating.
+const INTERNAL_ONLY = [
+  'survival_worst_option', 'survival_assign', 'survival_odds', 'survival_odds_precise',
+  'survival_generate_key', 'survival_ruthless_threshold', 'survival_ruthless_marks',
+  'survival_disqualified', 'survival_contenders', 'survival_assign_teams',
+];
+const funcs = (await db.query(
+  `select p.proname,
+          has_function_privilege('public', p.oid, 'EXECUTE') as pub_x
+     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.proname like 'survival\\_%'`
+)).rows;
+const leaky = funcs.filter((f) => INTERNAL_ONLY.includes(f.proname) && f.pub_x);
+check('none of the internal-only helpers are executable by PUBLIC', leaky.length === 0,
+  leaky.map((f) => f.proname).join(', '));
+check('every internal-only helper this audit expects actually exists',
+  INTERNAL_ONLY.every((name) => funcs.some((f) => f.proname === name)),
+  INTERNAL_ONLY.filter((name) => !funcs.some((f) => f.proname === name)).join(', '));
+
+const tableGrants = (await db.query(
+  `select table_name, privilege_type
+     from information_schema.role_table_grants
+    where grantee = 'authenticated' and table_name like 'survival\\_%'`
+)).rows;
+check('the sealed tables (options, keys) grant nothing to authenticated',
+  !tableGrants.some((g) => ['survival_options', 'survival_keys'].includes(g.table_name)),
+  tableGrants.filter((g) => ['survival_options', 'survival_keys'].includes(g.table_name))
+    .map((g) => `${g.table_name}:${g.privilege_type}`).join(', '));
+check('no survival table is writable by authenticated at all',
+  !tableGrants.some((g) => ['INSERT', 'UPDATE', 'DELETE'].includes(g.privilege_type)),
+  tableGrants.filter((g) => ['INSERT', 'UPDATE', 'DELETE'].includes(g.privilege_type))
+    .map((g) => `${g.table_name}:${g.privilege_type}`).join(', '));
+
+console.log('\n=== consensus mode: teams draw once, and a tap fans out to the whole team ===');
+
+const THOST = '50505050-5050-5050-5050-505050505050';
+const TCARA = '60606060-6060-6060-6060-606060606060';
+const TDEV = '70707070-7070-7070-7070-707070707070';
+const TLEE = '80808080-8080-8080-8080-808080808080';
+const TGIA = '90909090-9090-9090-9090-909090909090';
+
+await be(THOST);
+const tgame = (await db.query(`select * from survival_create('T-Host')`)).rows[0];
+for (const [uid, name] of [[TCARA, 'T-Cara'], [TDEV, 'T-Dev'], [TLEE, 'T-Lee'], [TGIA, 'T-Gia']]) {
+  await be(uid);
+  await db.query(`select survival_join($1,$2)`, [tgame.code, name]);
+}
+
+await be(TCARA);
+check('only the host may set the mode',
+  !!(await refuses(`select survival_set_mode($1,'consensus')`, [tgame.id])));
+
+await be(THOST);
+check('a bogus mode is refused',
+  !!(await refuses(`select survival_set_mode($1,'chaos')`, [tgame.id])));
+await db.query(`select survival_set_mode($1,'consensus')`, [tgame.id]);
+
+await db.query(`select survival_advance($1)`, [tgame.id]); // briefing — teams are drawn here
+
+const members = (await db.query(
+  `select team_no, count(*)::int as n from survival_team_members
+    where game_id = $1 group by team_no order by team_no`, [tgame.id],
+)).rows;
+check('five players draw a team of two and a team of three, nobody standing alone',
+  members.map((r) => r.n).sort().join(',') === '2,3',
+  members.map((r) => `team ${r.team_no}: ${r.n}`).join(', '));
+
+check('too late to change the mode once the briefing has started',
+  !!(await refuses(`select survival_set_mode($1,'solo')`, [tgame.id])));
+
+await db.query(`select survival_advance($1)`, [tgame.id]); // running — first warm-up
+
+const pair = members.find((r) => r.n === 2).team_no;
+const pairRows = (await db.query(
+  `select t.player_id, p.user_id from survival_team_members t
+     join survival_players p on p.id = t.player_id
+    where t.game_id = $1 and t.team_no = $2`,
+  [tgame.id, pair],
+)).rows;
+
+await be(pairRows[0].user_id);
+await db.query(`select survival_answer($1, 2)`, [tgame.id]);
+
+await be(pairRows[1].user_id);
+const teammatesAnswer = (await db.query(
+  `select option_index from survival_answers
+    where game_id = $1 and player_id = $2 and question_idx = -2`, [tgame.id, pairRows[1].player_id],
+)).rows[0];
+check("the teammate's tap is already on my own row, though I never tapped",
+  teammatesAnswer?.option_index === 2, JSON.stringify(teammatesAnswer));
+check('and a second tap for the team is refused, exactly like a solo second tap',
+  !!(await refuses(`select survival_answer($1, 3)`, [tgame.id])));
+
+console.log('\n--- consensus mode: the clue splits, and the keypad is shared ---');
+
+await be(THOST);
+await db.query(`select survival_reveal($1)`, [tgame.id]); // close warm-up 1
+await db.query(`select survival_advance($1)`, [tgame.id]); // warm-up 2
+await db.query(`select survival_reveal($1)`, [tgame.id]);
+await db.query(`select survival_advance($1)`, [tgame.id]); // question 0 — a clued round
+
+await be(pairRows[0].user_id);
+const seer0 = (await db.query(`select * from survival_clue_digits where game_id=$1`, [tgame.id])).rows;
+const askedBy0 = (await db.query(`select public.survival_current_clue_seer($1) as n`, [tgame.id])).rows[0].n;
+
+await be(pairRows[1].user_id);
+const seer1 = (await db.query(`select * from survival_clue_digits where game_id=$1`, [tgame.id])).rows;
+const askedBy1 = (await db.query(`select public.survival_current_clue_seer($1) as n`, [tgame.id])).rows[0].n;
+
+check('exactly one of the two teammates sees this round\'s digit, not both',
+  seer0.length + seer1.length === 1,
+  `saw: ${seer0.length} and ${seer1.length}`);
+check("the one who can't see it is told who on their team to ask instead",
+  (seer0.length === 1 && askedBy0 === null && askedBy1 !== null)
+  || (seer1.length === 1 && askedBy1 === null && askedBy0 !== null),
+  `askedBy0=${askedBy0} askedBy1=${askedBy1}`);
+
+await be(THOST);
+await db.query(`select survival_reveal($1)`, [tgame.id]);
+await db.query(`select survival_advance($1)`, [tgame.id]); // question 1
+
+await be(pairRows[0].user_id);
+await db.query(`select survival_answer($1, 1)`, [tgame.id]);
+
+// A wrong guess by one teammate starts the cooldown for BOTH of them — same
+// shared keypad, not two independent ones.
+const wrong1 = (await db.query(`select * from survival_escape($1, '0000')`, [tgame.id])).rows[0];
+check('a wrong guess is rejected', wrong1.correct === false, JSON.stringify(wrong1));
+
+await be(pairRows[1].user_id);
+check("the teammate's cooldown is already running too, though they never guessed",
+  !!(await refuses(`select * from survival_escape($1, '1111')`, [tgame.id])));
+
+// Fast-forward past the cooldown and hand both teammates the real code.
+await db.exec('reset role;');
+await db.query(`update survival_attempts set created_at = now() - interval '10 seconds' where game_id = $1`, [tgame.id]);
+const teamCode = (await db.query(`select code from survival_keys where game_id = $1`, [tgame.id])).rows[0].code;
+
+await be(pairRows[1].user_id);
+const solved = (await db.query(`select * from survival_escape($1, $2)`, [tgame.id, teamCode])).rows[0];
+check('the correct code is accepted', solved.correct === true, JSON.stringify(solved));
+
+const bothEscaped = (await db.query(
+  `select player_id, solve_order from survival_escapes where game_id = $1`, [tgame.id],
+)).rows;
+check('cracking it seats the WHOLE team at once, not just whoever typed it',
+  bothEscaped.length === 2 && bothEscaped.every((r) => r.solve_order === bothEscaped[0].solve_order),
+  JSON.stringify(bothEscaped));
 
 console.log('\n=== re-applying over a database that already has a game in it ===');
 // This is the real situation on the hosted project: 0001 and 0002 were
@@ -608,10 +1022,15 @@ for (const file of files) {
 }
 const kept = await db.query(
   'select (select count(*) from submissions) as subs, (select count(*) from votes) as votes,'
-  + ' (select count(*) from players where score > 0) as scored',
+  + ' (select count(*) from players where score > 0) as scored,'
+  + ' (select count(*) from survival_escapes) as escapes,'
+  + ' (select count(*) from survival_attempts) as attempts',
 );
 check('the game survives the re-apply intact',
   Number(kept.rows[0].subs) > 0 && Number(kept.rows[0].scored) > 0,
+  JSON.stringify(kept.rows[0]));
+check('the extraction race survives the re-apply too',
+  Number(kept.rows[0].escapes) > 0 && Number(kept.rows[0].attempts) > 0,
   JSON.stringify(kept.rows[0]));
 
 console.log('\n--- a player still cannot drive the game ---');

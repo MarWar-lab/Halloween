@@ -8,6 +8,15 @@
  *
  * See src/survival/sealed.ts for the one deliberate exception and why it is
  * not really one.
+ *
+ * This file also carries two things that look like they should be secrets
+ * and are not: `DARK_CHOICES` (which options are "ruthless") and each
+ * question's `manifest` metadata (which round carries a real clue vs. a
+ * decoy, and which berth it claims). Both are inferable from the choice text
+ * and the read-aloud narration anyway — a player who pays attention already
+ * knows them. The one genuine secret in the whole puzzle is the per-game
+ * random *digit* at each clued round, which lives in the database behind
+ * `survival_clue_digits`/`survival_keys` and is never bundled here.
  */
 
 export interface Question {
@@ -38,6 +47,34 @@ export interface Question {
    * be worse than showing nothing.
    */
   clip?: string;
+  /**
+   * The extraction-manifest clue this round carries, if any (7 of the 9 real
+   * questions do; two carry nothing to read at all, on purpose). `berth` and
+   * `color` are fixed content, identical every game. `line` renders the
+   * actual sentence once the per-game random digit for this round arrives
+   * from the backend (`Snapshot.clue`) — before that, nothing is shown.
+   */
+  manifest?: {
+    berth: 1 | 2 | 3 | 4;
+    color: 'green' | 'red';
+    /**
+     * How the seal is obscured until a player deliberately reveals it — a
+     * tap-and-look moment, not a passive read, the same "you had to be
+     * paying attention in person" texture a photographed hidden-object clue
+     * has. The digit itself is never in the DOM until revealed: this is a
+     * placeholder-swap on tap, not a CSS blur someone could inspect around.
+     */
+    style: 'frost' | 'static' | 'torn';
+    /**
+     * Renders the line given whatever the caller wants shown where the seal
+     * goes — the real digit as a string once revealed, or a placeholder
+     * glyph before that. Takes a string, not the digit itself, so hiding it
+     * is never a matter of redacting a number back out of already-composed
+     * prose (fragile — a seal digit can equal the berth number elsewhere in
+     * the same sentence).
+     */
+    line: (seal: string) => string;
+  };
 }
 
 /**
@@ -65,16 +102,99 @@ export const OPENING =
   'extraction chopper leaves the TWIN international trade port, on the far edge of ' +
   'the city, and you intend to be on it.';
 
-/** The eighth question, which is answered in words rather than by choosing. */
+/**
+ * Read right after `OPENING`, before question one. States the entire
+ * extraction-code mechanic in full — what a manifest line means, which way
+ * the code reads, and that there is no lockout — on purpose: the only real
+ * challenge is paying attention over the next nine rounds, never guessing
+ * the rule itself.
+ */
+export const EXTRACTION_BRIEF =
+  "TWIN publishes its berth manifest to the IOTA ledger, and the ledger doesn't " +
+  'care that the grid is down — every screen you pass tonight will carry one line ' +
+  'of it. A line reads berth N, seal D, plus a verdict: signed green (it counts) ' +
+  'or red, rejected (ignore it). Berth is a position, 1 to 4. Once you have all ' +
+  'four green seals, read them from berth 4 down to berth 1 — that is the code. ' +
+  'Some rounds carry nothing to read at all. You get two tries at the keypad — ' +
+  'a wrong one costs you a few seconds before the next — and if the second is ' +
+  'wrong too, the port stops listening and it is the room who decides for you. ' +
+  'Nobody is going to write any of this down for you.';
+
+/** The keypad players use to try the extraction code, from round one onward. */
+export const EXTRACTION = {
+  /** Restated on the last round's reveal, as a reminder, never a reveal. */
+  rule:
+    'Last call. Four green seals, four berths. Read us the seals from the last ' +
+    'berth back to the first.',
+  prompt: 'State the code.',
+  length: 4,
+  /** How long a wrong guess costs you before the same player can try again. */
+  retrySeconds: 5,
+  /** Two wrong guesses and the keypad hands you to the room instead — nobody is stuck at a locked door all night. */
+  maxWrongGuesses: 2,
+};
+
+/** The final round, which is answered in words rather than by choosing. */
 export const FINAL_PLEA = {
   title: 'The Final Plea',
   setup:
-    'The chopper lands. The blast doors give way. There is one seat left, and the ' +
-    'pilot is shouting over the rotors: we are over the weight limit, and I can take ' +
-    'one of you. Give me one good reason why it should be YOU.',
+    'The chopper lands. The blast doors give way. The pilot is shouting over the ' +
+    'rotors: three seats, and I am already over the weight limit. Anyone who can ' +
+    'state the extraction code walks on now. The rest of you argue it out. Give ' +
+    'me one good reason why it should be YOU.',
   /** One sentence. The cap is the form, not a technical limit. */
   maxChars: 150,
 };
+
+/**
+ * Setups now carry a functional payload on top of flavour — the same cap
+ * `sealed.ts`'s `OUTCOME_MAX` applies to outcome prose, for the same reason:
+ * it has to stay readable on a phone.
+ */
+export const SETUP_MAX = 340;
+
+/**
+ * Which options are "ruthless" — another named person is measurably worse
+ * off because you picked it, not just selfishness (every option here is
+ * selfish). Public on purpose: inferable from the choice text itself, and a
+ * threshold nobody knows is a threshold nobody dreads.
+ *
+ * Indexed by `question_idx` (0..8); an empty array means that round has no
+ * dark option at all.
+ */
+export const DARK_CHOICES: number[][] = [
+  [2], // The Guilt Trip — block their number and barricade the door
+  [2], // The Feuding Neighbour — golf club to the head, take the SUV
+  [2, 4], // The Drive — speed off / let strangers fight for the seat
+  [0], // The Checkpoint — shove a cougher into the AI scanner
+  [2], // The Infiltration — take the hand with you for the scanners
+  [2], // The Supply Cache — nothing, and lock the door behind you
+  [1], // The Loading Dock — give them a decoy route instead
+  [0], // The Dark Stairwell — trip the stranger running beside you
+  [], // The Roof Breach — every option here only risks the player
+];
+
+/** A majority of the 8 rounds that carry a dark option — not reachable by an ordinary run of pragmatic picks, but real for anyone optimising blindly for survival percentage alone. */
+export const RUTHLESS_LIMIT = 5;
+
+/**
+ * How many marks a player has earned — non-auto-assigned dark picks only.
+ * An answer the game chose for you (silence, or a late-join backfill) never
+ * counts: being disqualified for a choice you never made would be the one
+ * genuinely unfair outcome this mechanic could produce.
+ */
+export function marksOf(
+  answers: { playerId: string; questionIdx: number; optionIndex: number; autoAssigned: boolean }[],
+  playerId: string,
+): number {
+  return answers.filter(
+    (a) =>
+      a.playerId === playerId &&
+      !a.autoAssigned &&
+      a.questionIdx >= 0 &&
+      (DARK_CHOICES[a.questionIdx] ?? []).includes(a.optionIndex),
+  ).length;
+}
 
 /**
  * Two icebreakers before the world ends in earnest. Zero stakes — no
@@ -136,6 +256,13 @@ export const QUESTIONS: Question[] = [
       'Fly them a survival kit by drone',
     ],
     clip: '/clips/guilt-trip.mp4',
+    manifest: {
+      berth: 2,
+      color: 'red',
+      style: 'static',
+      line: (seal) =>
+        `A café screen behind them is still carrying the manifest: berth 2, seal ${seal} — red, rejected.`,
+    },
   },
   {
     title: 'The Feuding Neighbour',
@@ -148,6 +275,14 @@ export const QUESTIONS: Question[] = [
       'Ditch your bag, ride beside the dog',
       'AirTag their bumper, follow on a bike',
     ],
+    clip: '/clips/feuding-neighbour.mp4',
+    manifest: {
+      berth: 1,
+      color: 'green',
+      style: 'frost',
+      line: (seal) =>
+        `Their dashboard is still pulling the manifest off the ledger: berth 1, seal ${seal}, signed green.`,
+    },
   },
   {
     title: 'The Drive',
@@ -160,6 +295,7 @@ export const QUESTIONS: Question[] = [
       'Point them toward a bus you saw idling back',
       'Let them argue it out, take the winner',
     ],
+    clip: '/clips/the-drive.mp4',
   },
   {
     title: 'The Checkpoint',
@@ -173,6 +309,13 @@ export const QUESTIONS: Question[] = [
       'Crawl through the storm drain',
     ],
     clip: '/clips/checkpoint.mp4',
+    manifest: {
+      berth: 4,
+      color: 'green',
+      style: 'static',
+      line: (seal) =>
+        `The gate monitor cycles the manifest over and over: berth 4, seal ${seal}, signed green.`,
+    },
   },
   {
     title: 'The Infiltration',
@@ -185,6 +328,14 @@ export const QUESTIONS: Question[] = [
       'Slip in behind an automated cargo truck',
       'Beg port authority over the comms box',
     ],
+    clip: '/clips/infiltration.mp4',
+    manifest: {
+      berth: 4,
+      color: 'red',
+      style: 'torn',
+      line: (seal) =>
+        `A cracked terminal is still broadcasting: berth 4, seal ${seal} — red, rejected, overwritten.`,
+    },
   },
   {
     title: 'The Supply Cache',
@@ -197,6 +348,14 @@ export const QUESTIONS: Question[] = [
       'The trauma kit, for the injured outside',
       'A solar battery bank and a smart radio',
     ],
+    clip: '/clips/supply-cache.mp4',
+    manifest: {
+      berth: 2,
+      color: 'green',
+      style: 'static',
+      line: (seal) =>
+        `A handheld radio reads the manifest into the empty room: berth 2, seal ${seal}, signed green.`,
+    },
   },
   {
     title: 'The Loading Dock',
@@ -209,6 +368,13 @@ export const QUESTIONS: Question[] = [
       'Answer, but lie about how close it is',
       'Smash the radio so you cannot answer again',
     ],
+    clip: '/clips/loading-dock.mp4',
+    manifest: {
+      berth: 1,
+      color: 'red',
+      style: 'torn',
+      line: (seal) => `The dock board above it holds one line: berth 1, seal ${seal} — red, rejected.`,
+    },
   },
   {
     title: 'The Dark Stairwell',
@@ -235,5 +401,12 @@ export const QUESTIONS: Question[] = [
       'Jam the door\'s hydraulic gears',
     ],
     clip: '/clips/roof-breach.mp4',
+    manifest: {
+      berth: 3,
+      color: 'green',
+      style: 'static',
+      line: (seal) =>
+        `The helipad's own panel writes its last line before the power goes: berth 3, seal ${seal}, signed green.`,
+    },
   },
 ];

@@ -5,11 +5,14 @@ import type { Snapshot } from '../types';
 import type { Survival } from '../state/useSurvival';
 
 const base = (phase: Snapshot['game']['phase']): Snapshot => ({
-  game: { id: 'game', code: 'TEST', hostUserId: 'host', phase, questionIdx: 6, revealed: true, createdAt: '' },
+  game: { id: 'game', code: 'TEST', hostUserId: 'host', phase, questionIdx: 6, revealed: true, createdAt: '', mode: 'solo' },
   players: ['Hana', 'Cara'].map((name) => ({ id: name, name, gameId: 'game', userId: name, lastSeen: '' })),
   answers: [], myScores: [{ questionIdx: 0, survivalPct: 65 }], pleas: [], votes: [],
   answeredPlayerIds: [], pleadedPlayerIds: ['Hana'], votedPlayerIds: ['Hana'],
-  reveal: null, standings: null, winner: [{ playerId: 'Hana', name: 'Hana', votes: 1, average: 65 }],
+  reveal: null, standings: null,
+  seats: [{ playerId: 'Hana', name: 'Hana', seat: 1, path: 'vote', votes: 1, average: 65, solveOrder: null, contested: false }],
+  clue: null, clueSeer: null, escapedPlayerIds: [], retryInSeconds: 0, teamAttempts: 0,
+  ruthless: null, keyReveal: null, myTeam: null,
 });
 const render = (snapshot: Snapshot, isHost = true) => {
   vi.stubGlobal('window', { location: { href: 'http://localhost/survive?net=local', host: 'localhost' } });
@@ -31,7 +34,7 @@ it('shows everyone\'s rate at the result, not a stale private-only line', () => 
   expect(html).not.toContain('Finished');
   expect(html).not.toContain('Nobody else can see this');
   // The board carries the reveal now — every player's row, attributed.
-  expect(html).toContain('Hana takes the seat');
+  expect(html).toContain('The room voted Hana aboard');
   expect(html).toContain('board-row');
   expect(html).toContain('>65%<');
 });

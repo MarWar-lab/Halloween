@@ -16,7 +16,8 @@ installBrowser();
 
 const { LocalSurvivalBackend } = await import('./local');
 const { SEALED, worstOption } = await import('../sealed');
-const { INTRO_QUESTIONS } = await import('../questions');
+const { DARK_CHOICES, INTRO_QUESTIONS } = await import('../questions');
+import { SEATS } from '../types';
 import type { Snapshot } from '../types';
 
 type Backend = InstanceType<typeof LocalSurvivalBackend>;
@@ -234,15 +235,21 @@ describe('The Last Screen Standing, through the local backend', () => {
 
     const done = seenBy(backend, 'dev', gameId);
     expect(done.votes).toHaveLength(3);
-    expect(done.winner).toHaveLength(1);
-    expect(done.winner![0].playerId).toBe(cara);
-    expect(done.winner![0].votes).toBe(1);
+    // Three clean players, three seats — everyone fills one. The tie is still
+    // broken, just visible in the ORDER (seat 1 goes to the best precise
+    // odds) rather than in who gets a seat at all.
+    expect(done.seats).toHaveLength(3);
+    expect(done.seats!.every((s) => s.path === 'vote')).toBe(true);
+    expect(done.seats![0].playerId).toBe(cara);
+    expect(done.seats![0].seat).toBe(1);
+    expect(done.seats![0].votes).toBe(1);
   });
 
   it('ranks and breaks ties on the unrounded odds, not the displayed ones', async () => {
-    // Seven compounding rounds routinely lands more than one player on the
-    // same rounded "0.0%". Written directly rather than played through real
-    // rounds: the point here is the arithmetic on already-scored rows.
+    // Geometric mean spreads odds across a legible range, but two different
+    // precise values can still land on the same rounded display by
+    // coincidence. Written directly rather than played through real rounds:
+    // the point here is the arithmetic on already-scored rows.
     await playOut(backend, gameId);
     tab('hana');
     await backend.advance(gameId); // → plea
@@ -252,10 +259,10 @@ describe('The Last Screen Standing, through the local backend', () => {
     const [hana, cara] = ['Hana', 'Cara'].map((n) => idOf(snap, n));
     const doc = JSON.parse(localStorage.getItem(`survival:game:${gameId}`)!);
     doc.scores = doc.scores.filter((s: { playerId: string }) => s.playerId !== hana && s.playerId !== cara);
-    // 10 * 10 * 10 * 10 = 0.01% precise, rounds to 0.0%.
-    [10, 10, 10, 10].forEach((survivalPct, i) => doc.scores.push({ playerId: hana, questionIdx: i, survivalPct }));
-    // 10 * 10 * 10 * 15 = 0.015% precise — bigger, and still rounds to 0.0%.
-    [10, 10, 10, 15].forEach((survivalPct, i) => doc.scores.push({ playerId: cara, questionIdx: i, survivalPct }));
+    // sqrt(0.63 * 0.65) ≈ 63.992% precise, rounds to 64.0%.
+    [63, 65].forEach((survivalPct, i) => doc.scores.push({ playerId: hana, questionIdx: i, survivalPct }));
+    // sqrt(0.64 * 0.64) = 64.0% precise exactly — same rounded figure, still ahead underneath.
+    [64, 64].forEach((survivalPct, i) => doc.scores.push({ playerId: cara, questionIdx: i, survivalPct }));
     localStorage.setItem(`survival:game:${gameId}`, JSON.stringify(doc));
 
     const standings = seenBy(backend, 'hana', gameId).standings!;
@@ -263,8 +270,8 @@ describe('The Last Screen Standing, through the local backend', () => {
       standings.find((s) => s.playerId === hana)!,
       standings.find((s) => s.playerId === cara)!,
     ];
-    expect(hanaRow.average).toBe(0);
-    expect(caraRow.average).toBe(0);
+    expect(hanaRow.average).toBe(64);
+    expect(caraRow.average).toBe(64);
     // Displayed identically, and still correctly ordered underneath it.
     expect(standings.findIndex((s) => s.playerId === cara))
       .toBeLessThan(standings.findIndex((s) => s.playerId === hana));
@@ -274,9 +281,9 @@ describe('The Last Screen Standing, through the local backend', () => {
     tab('dev'); await backend.vote(gameId, cara);
     tab('hana'); await backend.advance(gameId); // → result
 
-    const winner = seenBy(backend, 'dev', gameId).winner!;
-    expect(winner).toHaveLength(1);
-    expect(winner[0].playerId).toBe(cara);
+    const seats = seenBy(backend, 'dev', gameId).seats!;
+    expect(seats[0].playerId).toBe(cara);
+    expect(seats[0].seat).toBe(1);
   });
 });
 
@@ -350,6 +357,200 @@ describe('the two warm-ups', () => {
   });
 });
 
+/** Read this backend's own generated puzzle straight out of localStorage — the same shortcut the odds test above already takes for `doc.scores`. */
+function docOf(gameId: string): { keyCode: string; attempts: { playerId: string; at: number; correct: boolean }[] } {
+  return JSON.parse(localStorage.getItem(`survival:game:${gameId}`)!);
+}
+
+/** Push every one of a player's attempt timestamps far enough into the past that the cooldown has plainly elapsed. */
+function clearCooldown(gameId: string, playerId: string) {
+  const doc = docOf(gameId) as unknown as { attempts: { playerId: string; at: number }[] };
+  for (const a of doc.attempts) if (a.playerId === playerId) a.at = 0;
+  localStorage.setItem(`survival:game:${gameId}`, JSON.stringify(doc));
+}
+
+describe('the extraction code', () => {
+  let backend: Backend;
+  let gameId: string;
+  let code: string;
+
+  beforeEach(async () => {
+    installBrowser();
+    backend = new LocalSurvivalBackend();
+    tab('hana');
+    const made = await backend.create('Hana');
+    gameId = made.gameId;
+    code = made.code;
+    tab('cara');
+    await backend.join(code, 'Cara');
+    tab('dev');
+    await backend.join(code, 'Dev');
+    tab('hana');
+    await backend.advance(gameId); // briefing
+    await backend.advance(gameId); // running — first warm-up
+    await skipWarmups(backend, gameId);
+    await playOut(backend, gameId);
+    tab('hana');
+    await backend.advance(gameId); // → plea
+  });
+
+  it('never lets a wrong guess reveal the code, to the guesser or to anyone else', async () => {
+    tab('cara');
+    const result = await backend.escape(gameId, '0000');
+    expect(result.accepted).toBe(false);
+
+    const real = docOf(gameId).keyCode;
+    if ('0000' === real) throw new Error('test fixture collided with the real code — rerun');
+    const mine = seenBy(backend, 'cara', gameId);
+    expect(JSON.stringify(mine)).not.toContain(real);
+    const dev = seenBy(backend, 'dev', gameId);
+    expect(JSON.stringify(dev)).not.toContain(real);
+    // Dev's own cooldown must be untouched by Cara's wrong guess.
+    expect(dev.retryInSeconds).toBe(0);
+  });
+
+  it('never locks a player out — a wrong guess only costs a short cooldown', async () => {
+    tab('cara');
+    const wrong = await backend.escape(gameId, '0000');
+    expect(wrong.accepted).toBe(false);
+    expect(seenBy(backend, 'cara', gameId).retryInSeconds).toBeGreaterThan(0);
+    // Immediately trying again, still cooling down, is refused without being
+    // recorded as a real guess.
+    await expect(backend.escape(gameId, '1111')).rejects.toThrow(/resetting/i);
+
+    clearCooldown(gameId, idOf(seenBy(backend, 'cara', gameId), 'Cara'));
+    expect(seenBy(backend, 'cara', gameId).retryInSeconds).toBe(0);
+    const right = await backend.escape(gameId, docOf(gameId).keyCode);
+    expect(right.accepted).toBe(true);
+  });
+
+  it('races players in submission order, and every viewer sees the same order', async () => {
+    const real = docOf(gameId).keyCode;
+    tab('cara');
+    await backend.escape(gameId, real);
+    tab('dev');
+    await backend.escape(gameId, real);
+    tab('hana');
+    await backend.escape(gameId, real);
+
+    const [hana, cara, dev] = ['Hana', 'Cara', 'Dev'].map((n) => idOf(seenBy(backend, 'hana', gameId), n));
+    for (const who of ['hana', 'cara', 'dev']) {
+      expect(seenBy(backend, who, gameId).escapedPlayerIds).toEqual([cara, dev, hana]);
+    }
+  });
+
+  it('seats all three clean solvers by the code alone, once all three have solved', async () => {
+    const real = docOf(gameId).keyCode;
+    for (const who of ['cara', 'dev', 'hana']) {
+      tab(who);
+      await backend.escape(gameId, real);
+    }
+    tab('hana');
+    await backend.advance(gameId); // → tribunal
+    await backend.advance(gameId); // → result
+
+    const seats = seenBy(backend, 'hana', gameId).seats!;
+    expect(seats).toHaveLength(3);
+    expect(seats.every((s) => s.path === 'escape')).toBe(true);
+  });
+
+  it('skips a disqualified first solver — the seat passes to the next solver', async () => {
+    const real = docOf(gameId).keyCode;
+    const snap = seenBy(backend, 'hana', gameId);
+    const [hana, cara] = ['Hana', 'Cara'].map((n) => idOf(snap, n));
+
+    // Give Hana five non-auto ruthless picks directly — every question that
+    // carries a dark option, all in one write, exactly the shortcut the odds
+    // test above takes for scores.
+    const doc = JSON.parse(localStorage.getItem(`survival:game:${gameId}`)!);
+    doc.answers = doc.answers.filter((a: { playerId: string }) => a.playerId !== hana);
+    for (const q of [0, 1, 2, 3, 4]) {
+      doc.answers.push({ playerId: hana, questionIdx: q, optionIndex: DARK_CHOICES[q][0], autoAssigned: false });
+    }
+    localStorage.setItem(`survival:game:${gameId}`, JSON.stringify(doc));
+
+    tab('hana');
+    await backend.escape(gameId, real); // solves first, but is disqualified
+    tab('cara');
+    await backend.escape(gameId, real); // solves second
+    tab('hana');
+    await backend.advance(gameId); // → tribunal
+    await backend.advance(gameId); // → result
+
+    const final = seenBy(backend, 'dev', gameId);
+    expect(final.escapedPlayerIds[0]).toBe(hana); // solved first...
+    expect(final.seats!.some((s) => s.playerId === hana)).toBe(false); // ...but refused a seat
+    expect(final.seats!.some((s) => s.playerId === cara)).toBe(true); // the seat passed on
+    const hanaRow = final.ruthless!.find((r) => r.playerId === hana)!;
+    expect(hanaRow.disqualified).toBe(true);
+    expect(hanaRow.marks).toBeGreaterThanOrEqual(5);
+  });
+
+  it('a vote for a disqualified (but not yet escaped) player is accepted — the bump is a surprise at the reveal, not a refusal at the ballot', async () => {
+    const snap = seenBy(backend, 'hana', gameId);
+    const [cara, dev] = ['Cara', 'Dev'].map((n) => idOf(snap, n));
+
+    const doc = JSON.parse(localStorage.getItem(`survival:game:${gameId}`)!);
+    doc.answers = doc.answers.filter((a: { playerId: string }) => a.playerId !== dev);
+    for (const q of [0, 1, 2, 3, 4]) {
+      doc.answers.push({ playerId: dev, questionIdx: q, optionIndex: DARK_CHOICES[q][0], autoAssigned: false });
+    }
+    localStorage.setItem(`survival:game:${gameId}`, JSON.stringify(doc));
+
+    tab('hana');
+    await backend.advance(gameId); // → tribunal
+
+    // Dev is disqualified already, but nobody has any way to know that yet —
+    // ruthless is null until `result` (checked below) — so the room votes
+    // for him anyway, and it must go through cleanly.
+    tab('cara');
+    await expect(backend.vote(gameId, dev)).resolves.toBeUndefined();
+    expect(seenBy(backend, 'cara', gameId).ruthless).toBeNull();
+    tab('hana');
+    await backend.vote(gameId, dev);
+    tab('dev');
+    await backend.vote(gameId, cara);
+
+    tab('hana');
+    await backend.advance(gameId); // → result
+
+    const final = seenBy(backend, 'cara', gameId);
+    const devRow = final.ruthless!.find((r) => r.playerId === dev)!;
+    expect(devRow.disqualified).toBe(true);
+    // Dev had the most votes (2 vs Cara's 1) and still holds no seat.
+    expect(final.seats!.some((s) => s.playerId === dev)).toBe(false);
+    expect(final.seats!.some((s) => s.playerId === cara)).toBe(true);
+  });
+
+  it('never disqualifies a silent player, even though the auto-assigned move is sometimes dark', async () => {
+    // Dev never answered a single real question all game (playOut only moves
+    // Hana/Cara when `best` is given, and nobody was given here) — every one
+    // of his answers is auto-assigned. Some of those auto-picks land on a
+    // dark option (the worst move sometimes is one), and none should count.
+    const snap = seenBy(backend, 'hana', gameId);
+    const dev = idOf(snap, 'Dev');
+    expect(snap.answers.filter((a) => a.playerId === dev && a.questionIdx >= 0).every((a) => a.autoAssigned)).toBe(true);
+
+    tab('hana');
+    await backend.advance(gameId); // → tribunal
+    await backend.advance(gameId); // → result
+    const ruthless = seenBy(backend, 'hana', gameId).ruthless!.find((r) => r.playerId === dev)!;
+    expect(ruthless.marks).toBe(0);
+    expect(ruthless.disqualified).toBe(false);
+  });
+
+  it('refuses a vote for someone already aboard', async () => {
+    const real = docOf(gameId).keyCode;
+    tab('cara');
+    await backend.escape(gameId, real);
+    tab('hana');
+    await backend.advance(gameId); // → tribunal
+    tab('dev');
+    await expect(backend.vote(gameId, idOf(seenBy(backend, 'dev', gameId), 'Cara')))
+      .rejects.toThrow(/already on the helicopter/i);
+  });
+});
+
 /**
  * Walk from the first warm-up through to question 0, revealing each along the
  * way. Every test in the describe block above assumes it starts at question
@@ -376,3 +577,231 @@ async function playOut(backend: Backend, gameId: string, best?: string) {
     if (q < SEALED.length - 1) await backend.advance(gameId);
   }
 }
+
+describe('consensus mode', () => {
+  it('draws teams of two, folding the odd one out into the last team', async () => {
+    installBrowser();
+    const backend = new LocalSurvivalBackend();
+    tab('hana');
+    const made = await backend.create('Hana');
+    for (const name of ['cara', 'dev', 'lee', 'gia']) {
+      tab(name);
+      await backend.join(made.code, name[0].toUpperCase() + name.slice(1));
+    }
+    tab('hana');
+    await backend.setMode(made.gameId, 'consensus');
+    await backend.advance(made.gameId); // briefing — teams are drawn here
+
+    // Five players: a team of two and a team of three, never a lone straggler.
+    const sizes = ['hana', 'cara', 'dev', 'lee', 'gia'].map(
+      (who) => seenBy(backend, who, made.gameId).myTeam?.length,
+    );
+    expect([...sizes].sort()).toEqual([2, 2, 3, 3, 3]);
+  });
+
+  it('is null (no team) in solo mode, the default', async () => {
+    installBrowser();
+    const backend = new LocalSurvivalBackend();
+    tab('hana');
+    const made = await backend.create('Hana');
+    await backend.advance(made.gameId); // briefing
+    expect(seenBy(backend, 'hana', made.gameId).myTeam).toBeNull();
+  });
+
+  it("one teammate's tap locks the choice in for the whole team", async () => {
+    installBrowser();
+    const backend = new LocalSurvivalBackend();
+    tab('hana');
+    const made = await backend.create('Hana');
+    tab('cara');
+    await backend.join(made.code, 'Cara');
+    tab('hana');
+    await backend.setMode(made.gameId, 'consensus');
+    await backend.advance(made.gameId); // briefing — one team of two
+    await backend.advance(made.gameId); // running — first warm-up
+    await skipWarmups(backend, made.gameId);
+
+    tab('cara');
+    await backend.answer(made.gameId, 2);
+
+    // Hana never tapped, but the team's choice is already hers too.
+    const hana = seenBy(backend, 'hana', made.gameId);
+    const hanaId = idOf(hana, 'Hana');
+    expect(hana.answers.find((a) => a.playerId === hanaId && a.questionIdx === 0)?.optionIndex).toBe(2);
+    // And a second tap for the same round — from either of them — is refused,
+    // exactly like a solo player's second tap would be.
+    await expect(backend.answer(made.gameId, 3)).rejects.toThrow();
+    tab('cara');
+    await expect(backend.answer(made.gameId, 3)).rejects.toThrow();
+  });
+
+  it('lets a late joiner (no team yet drawn) keep answering solo', async () => {
+    installBrowser();
+    const backend = new LocalSurvivalBackend();
+    tab('hana');
+    const made = await backend.create('Hana');
+    tab('cara');
+    await backend.join(made.code, 'Cara');
+    tab('hana');
+    await backend.setMode(made.gameId, 'consensus');
+    await backend.advance(made.gameId); // briefing — teams drawn from {Hana, Cara}
+    await backend.advance(made.gameId); // running
+    await skipWarmups(backend, made.gameId);
+
+    tab('lee');
+    await backend.join(made.code, 'Lee');
+    expect(seenBy(backend, 'lee', made.gameId).myTeam).toBeNull();
+
+    // Lee has no team, but can still answer for herself alone.
+    await backend.answer(made.gameId, 1);
+    const lee = seenBy(backend, 'lee', made.gameId);
+    const leeId = idOf(lee, 'Lee');
+    expect(lee.answers.find((a) => a.playerId === leeId && a.questionIdx === 0)?.optionIndex).toBe(1);
+    // It never touched Hana or Cara's team.
+    const hana = seenBy(backend, 'hana', made.gameId);
+    const hanaId = idOf(hana, 'Hana');
+    expect(hana.answers.some((a) => a.playerId === hanaId && a.questionIdx === 0)).toBe(false);
+  });
+
+  it('setMode is host-only and lobby-only', async () => {
+    installBrowser();
+    const backend = new LocalSurvivalBackend();
+    tab('hana');
+    const made = await backend.create('Hana');
+    tab('cara');
+    await backend.join(made.code, 'Cara');
+    await expect(backend.setMode(made.gameId, 'consensus')).rejects.toThrow();
+
+    tab('hana');
+    await backend.advance(made.gameId); // briefing — past the lobby now
+    await expect(backend.setMode(made.gameId, 'consensus')).rejects.toThrow();
+  });
+
+  it("splits a clued round's digit between teammates — one seer, one 'ask them' instead", async () => {
+    installBrowser();
+    const backend = new LocalSurvivalBackend();
+    tab('hana');
+    const made = await backend.create('Hana');
+    tab('cara');
+    await backend.join(made.code, 'Cara');
+    tab('hana');
+    await backend.setMode(made.gameId, 'consensus');
+    await backend.advance(made.gameId); // briefing — one team of two
+    await backend.advance(made.gameId); // running — first warm-up
+    await skipWarmups(backend, made.gameId); // → question 0, a clued round (berth 2, red)
+
+    const hana = seenBy(backend, 'hana', made.gameId);
+    const cara = seenBy(backend, 'cara', made.gameId);
+    // Exactly one of them sees the digit; the other is told who to ask.
+    const sawDigit = [hana, cara].filter((s) => s.clue !== null);
+    const wasToldToAsk = [hana, cara].filter((s) => s.clueSeer !== null);
+    expect(sawDigit).toHaveLength(1);
+    expect(wasToldToAsk).toHaveLength(1);
+    expect(sawDigit[0].clue?.questionIdx).toBe(0);
+    // Whoever wasn't the seer is told the OTHER one's name, not their own.
+    expect(wasToldToAsk[0].clueSeer?.name).toBe(sawDigit[0] === hana ? 'Hana' : 'Cara');
+  });
+
+  it("shares one keypad cooldown across the team, even for a member who never guessed", async () => {
+    installBrowser();
+    const backend = new LocalSurvivalBackend();
+    tab('hana');
+    const made = await backend.create('Hana');
+    tab('cara');
+    await backend.join(made.code, 'Cara');
+    tab('hana');
+    await backend.setMode(made.gameId, 'consensus');
+    await backend.advance(made.gameId); // briefing
+    await backend.advance(made.gameId); // running
+    await skipWarmups(backend, made.gameId);
+
+    tab('hana');
+    const wrong = await backend.escape(made.gameId, '0000');
+    expect(wrong.accepted).toBe(false);
+
+    // Cara never touched the keypad, but her cooldown is already running.
+    const cara = seenBy(backend, 'cara', made.gameId);
+    expect(cara.retryInSeconds).toBeGreaterThan(0);
+    await expect(backend.escape(made.gameId, '1111')).rejects.toThrow();
+  });
+
+  it('cracking the code seats the WHOLE team at once, not just whoever typed it', async () => {
+    installBrowser();
+    const backend = new LocalSurvivalBackend();
+    tab('hana');
+    const made = await backend.create('Hana');
+    tab('cara');
+    await backend.join(made.code, 'Cara');
+    tab('hana');
+    await backend.setMode(made.gameId, 'consensus');
+    await backend.advance(made.gameId); // briefing
+    await backend.advance(made.gameId); // running
+    await skipWarmups(backend, made.gameId);
+
+    tab('hana');
+    await backend.escape(made.gameId, '0000'); // burn the shared cooldown
+    clearCooldown(made.gameId, idOf(seenBy(backend, 'hana', made.gameId), 'Hana'));
+
+    const code = docOf(made.gameId).keyCode;
+    tab('cara'); // Cara solves it — Hana never touches the keypad again.
+    const solved = await backend.escape(made.gameId, code);
+    expect(solved.accepted).toBe(true);
+
+    const snap = seenBy(backend, 'hana', made.gameId);
+    const hanaId = idOf(snap, 'Hana');
+    const caraId = idOf(snap, 'Cara');
+    expect(snap.escapedPlayerIds).toEqual(expect.arrayContaining([hanaId, caraId]));
+  });
+
+  it('a team bigger than the seats left over shares the last one, contested — never an arbitrary pick', async () => {
+    installBrowser();
+    const backend = new LocalSurvivalBackend();
+    const names = ['hana', 'cara', 'dev', 'lee', 'gia'];
+    tab('hana');
+    const made = await backend.create('Hana');
+    for (const name of names.slice(1)) {
+      tab(name);
+      await backend.join(made.code, name[0].toUpperCase() + name.slice(1));
+    }
+    tab('hana');
+    await backend.setMode(made.gameId, 'consensus');
+    await backend.advance(made.gameId); // briefing — teams are drawn randomly here
+    await backend.advance(made.gameId); // running — first warm-up
+
+    // Teams are random now, so find out who actually ended up on the pair
+    // vs the trio rather than assuming any particular name did.
+    const pairMember = names.find((n) => (seenBy(backend, n, made.gameId).myTeam?.length ?? 0) === 2)!;
+    const trioMember = names.find((n) => (seenBy(backend, n, made.gameId).myTeam?.length ?? 0) === 3)!;
+    const pairIds = seenBy(backend, pairMember, made.gameId).myTeam!;
+    const trioIds = seenBy(backend, trioMember, made.gameId).myTeam!;
+
+    const code = docOf(made.gameId).keyCode;
+    // The pair solves first and takes 2 of the 3 seats.
+    tab(pairMember);
+    const first = await backend.escape(made.gameId, code);
+    expect(first.accepted).toBe(true);
+
+    // The trio solves next — only 1 seat is left for the 3 of them.
+    tab(trioMember);
+    const second = await backend.escape(made.gameId, code);
+    expect(second.accepted).toBe(true);
+
+    await skipWarmups(backend, made.gameId);
+    tab('hana');
+    await playOut(backend, made.gameId);
+    await backend.advance(made.gameId); // → plea
+    await backend.advance(made.gameId); // → tribunal
+    await backend.advance(made.gameId); // → result
+
+    const snap = seenBy(backend, 'hana', made.gameId);
+    const trioSeats = (snap.seats ?? []).filter((s) => trioIds.includes(s.playerId));
+    // All 3 share what's left, marked contested — never 1 or 2 of them
+    // picked arbitrarily by insertion order.
+    expect(trioSeats).toHaveLength(3);
+    expect(trioSeats.every((s) => s.contested && s.path === 'escape' && s.seat === SEATS)).toBe(true);
+
+    const pairSeats = (snap.seats ?? []).filter((s) => pairIds.includes(s.playerId));
+    expect(pairSeats).toHaveLength(2);
+    expect(pairSeats.every((s) => !s.contested)).toBe(true);
+  });
+});

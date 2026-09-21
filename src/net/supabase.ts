@@ -276,17 +276,34 @@ export class SupabaseBackend implements Backend {
     };
   }
 
-  subscribe(gameId: string, onChange: (snapshot: GameSnapshot) => void) {
+  subscribe(
+    gameId: string,
+    onChange: (snapshot: GameSnapshot) => void,
+    onError?: (message: string | null) => void,
+  ) {
     let stopped = false;
+    let hadError = false;
 
     let lastPhase: RoundPhase = 'scored';
 
+    // A dropped WiFi connection (or any transient fetch failure) must not be
+    // allowed to throw out of here — `loop` below awaits this, and an
+    // uncaught throw would stop it from ever rescheduling itself, silently
+    // freezing the room for this client until a manual refresh.
     const push = async () => {
       if (stopped) return;
-      const snap = await this.fetchSnapshot(gameId);
-      if (!snap || stopped) return;
-      lastPhase = snap.round?.phase ?? 'scored';
-      onChange(snap);
+      try {
+        const snap = await this.fetchSnapshot(gameId);
+        if (!snap || stopped) return;
+        lastPhase = snap.round?.phase ?? 'scored';
+        onChange(snap);
+        if (hadError) { onError?.(null); hadError = false; }
+      } catch (error) {
+        if (!stopped) {
+          hadError = true;
+          onError?.(`${error instanceof Error ? error.message : String(error)} Retrying…`);
+        }
+      }
     };
 
     // Postgres Changes carries the authoritative tables. Submissions and votes

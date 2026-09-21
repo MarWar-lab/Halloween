@@ -101,7 +101,11 @@ export interface Backend {
   /** Room code → game id, for opening the Stage in a second tab. */
   resolveCode(code: string): Promise<string | null>;
 
-  subscribe(gameId: string, onChange: (snapshot: GameSnapshot) => void): () => void;
+  subscribe(
+    gameId: string,
+    onChange: (snapshot: GameSnapshot) => void,
+    onError?: (message: string | null) => void,
+  ): () => void;
 
   // ── host-only ──────────────────────────────────────────────────────────
   addProxy(gameId: string, name: string, look: CharacterLook): Promise<void>;

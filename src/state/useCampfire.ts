@@ -92,7 +92,7 @@ export function useCampfire(): Campfire {
   useEffect(() => {
     const backend = connection?.backend;
     if (!backend || !session) return;
-    return backend.subscribe(session.gameId, setSnapshot);
+    return backend.subscribe(session.gameId, setSnapshot, setError);
   }, [connection, session?.gameId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {

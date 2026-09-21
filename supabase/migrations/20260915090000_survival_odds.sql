@@ -1,4 +1,5 @@
--- Survival odds compound; they do not average.
+-- Survival odds compound; they do not average — but the number on screen is
+-- their geometric mean, not the raw product.
 --
 -- A round's percentage is your chance of surviving THAT round alone. Still
 -- being standing after several of them means having survived all of them, and
@@ -8,24 +9,38 @@
 -- fall as the night goes on no matter how bad the calls get, which
 -- contradicts the entire premise of the game.
 --
+-- The raw product still does the right thing mathematically, but the wrong
+-- thing on screen: nine rounds compounded together crush a near-perfect run
+-- and a middling one down to the same unreadable "1%" or "0%", because
+-- multiplying nine numbers under 1 shrinks fast no matter how good they are.
+-- Taking the Nth root undoes exactly that shrinkage without touching its
+-- meaning — it is a strictly increasing function of the product, so every
+-- ranking and every tie-break that depends on relative order comes out
+-- exactly the same either way.
+--
 -- Mirrors survivalOddsOf / survivalOddsPrecise in src/survival/types.ts
 -- exactly. Function bodies only, no schema change — safe to re-run.
 
 /**
- * The product of every scored round for one player, as a percentage,
+ * The geometric mean of every scored round for one player, as a percentage,
  * UNROUNDED. Never returned to a client directly — only compared.
  *
- * Seven compounding rounds routinely lands several players on the same
- * rounded "0.0%" (even a run of good calls compounds down to a few percent by
- * the end), and deciding a ranking or a tie-break on that shared rounded
- * figure would call a real difference a tie when it is not one. Everything
- * that DECIDES something — the standings order, the winner tie-break —
- * compares this value; only the final SELECT rounds it for a human to read.
+ * Rescaling by the Nth root spreads odds across a legible range instead of
+ * crushing everyone near zero, but two precise values can still land on the
+ * same rounded display by coincidence, and deciding a ranking or a tie-break
+ * on that shared rounded figure would call a real difference a tie when it is
+ * not one. Everything that DECIDES something — the standings order, the
+ * winner tie-break — compares this value; only the final SELECT rounds it for
+ * a human to read.
  *
- * Plain PL/pgSQL multiplication over `numeric`, not exp(sum(ln(x))) — this is
- * a game score, not a scientific computation, and exact decimal arithmetic is
- * both simpler to read and immune to the "cannot take the log of zero" trap
- * that exp/ln hits the moment a percentage is ever seeded at 0.
+ * Plain PL/pgSQL multiplication over `numeric` for the product itself, not
+ * exp(sum(ln(x))) — this is a game score, not a scientific computation, and
+ * exact decimal arithmetic is both simpler to read and immune to the "cannot
+ * take the log of zero" trap that exp/ln hits the moment a percentage is ever
+ * seeded at 0. The Nth root at the end has to leave `numeric` for `double
+ * precision` — Postgres has no `numeric ^ fractional numeric` operator — and
+ * comes back rounded to a display-grade precision, which is exactly what
+ * `survival_odds` does with it next regardless.
  */
 create or replace function public.survival_odds_precise(p_game uuid, p_player uuid)
 returns numeric language plpgsql stable security definer set search_path = public as $$
@@ -43,7 +58,7 @@ begin
   end loop;
 
   if v_rounds = 0 then return null; end if;
-  return v_product * 100;
+  return (power(v_product::double precision, 1.0 / v_rounds) * 100)::numeric;
 end; $$;
 
 /** The same figure, rounded — what actually reaches a screen. */

@@ -343,6 +343,71 @@ check("and carry no percentage",
       all(not any("pct" in k for k in r) for r in (reveal or [])),
       ",".join((reveal or [{}])[0].keys()))
 
+# ── The extraction code and the ruthlessness trap ───────────────────────────
+#
+# PGlite (scripts/check-migrations.mjs) already proves the happy-path race and
+# the seat algorithm against real Postgres semantics — it can run as the table
+# owner and read the generated code directly. This script runs on the anon key
+# only and genuinely cannot know the code, so its job is the negative half:
+# what a real anonymous session, against the real deployed project, can and
+# cannot read or call.
+
+probe = call("POST", "/rest/v1/rpc/survival_escape", tok_a, {"p_game": s_id, "p_attempt": "0000"})
+if isinstance(probe, dict) and probe.get("__error__") in (404, 400) and "escape" in str(probe):
+    print("  FAIL  the escape migration has not been applied")
+    print("\n  Run supabase/migrations/20260916090000_survival_escape.sql onward, then run this again.")
+    raise SystemExit(1)
+
+keys = call("GET", f"/rest/v1/survival_keys?game_id=eq.{s_id}&select=code", tok_a)
+check("the extraction code table is unreadable", not keys or isinstance(keys, dict),
+      f"got {json.dumps(keys)[:80]}")
+
+gen = call("POST", "/rest/v1/rpc/survival_generate_key", tok_a, {"p_game": s_id})
+check("a player cannot regenerate the puzzle", isinstance(gen, dict) and bool(gen.get("__error__")))
+
+threshold = call("POST", "/rest/v1/rpc/survival_ruthless_threshold", tok_a, {})
+check("the ruthlessness threshold is sealed", isinstance(threshold, dict) and bool(threshold.get("__error__")))
+
+marks = call("POST", "/rest/v1/rpc/survival_ruthless_marks", tok_a, {"p_game": s_id, "p_player": sb["id"]})
+check("a player cannot ask someone else's mark count directly",
+      isinstance(marks, dict) and bool(marks.get("__error__")))
+
+seats_early = call("POST", "/rest/v1/rpc/survival_seats", tok_a, {"p_game": s_id})
+check("survival_seats refuses before the result",
+      isinstance(seats_early, dict) and bool(seats_early.get("__error__")))
+
+reveal_early = call("POST", "/rest/v1/rpc/survival_key_reveal", tok_a, {"p_game": s_id})
+check("survival_key_reveal refuses before the result",
+      isinstance(reveal_early, dict) and bool(reveal_early.get("__error__")))
+
+ruthless_early = call("POST", "/rest/v1/rpc/survival_ruthless", tok_a, {"p_game": s_id})
+check("survival_ruthless refuses before the tribunal",
+      isinstance(ruthless_early, dict) and bool(ruthless_early.get("__error__")))
+
+wrong = one(call("POST", "/rest/v1/rpc/survival_escape", tok_b, {"p_game": s_id, "p_attempt": "0000"}))
+check("a wrong live guess is refused, with a retry countdown, not a lockout",
+      bool(wrong) and wrong.get("correct") is False and (wrong.get("retry_in_seconds") or 0) > 0,
+      f"got {json.dumps(wrong)[:120]}")
+check("a wrong guess never carries the code anywhere in the response",
+      "code" not in json.dumps(wrong or {}))
+
+again_wrong = call("POST", "/rest/v1/rpc/survival_escape", tok_b, {"p_game": s_id, "p_attempt": "1111"})
+check("trying again inside the live cooldown is refused",
+      isinstance(again_wrong, dict) and bool(again_wrong.get("__error__")))
+
+attempts_b = call("GET", f"/rest/v1/survival_attempts?game_id=eq.{s_id}&select=id", tok_b)
+check("that player's own attempt is logged", len(attempts_b or []) >= 1, f"{len(attempts_b or [])} row(s)")
+b_ids = {r["id"] for r in (attempts_b or [])}
+
+# NOT an empty-set check: the schema probe above (line 355) already made A's
+# own attempt against this same real game, on this same token — so A is
+# EXPECTED to see her own row here. The actual invariant is that neither
+# side's rows overlap with the other's, never that either side sees nothing.
+attempts_a = call("GET", f"/rest/v1/survival_attempts?game_id=eq.{s_id}&select=id", tok_a)
+a_ids = {r["id"] for r in (attempts_a or [])}
+check("one player's attempts are invisible to another", a_ids.isdisjoint(b_ids),
+      f"a saw {len(a_ids)}, b saw {len(b_ids)}, overlap {a_ids & b_ids}")
+
 print(f"\n{'=' * 60}\n  {len(passed)} passed, {len(failed)} failed")
 if failed:
     for f in failed:

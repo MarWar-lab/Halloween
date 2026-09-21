@@ -12,6 +12,9 @@ export type Phase = 'lobby' | 'briefing' | 'running' | 'plea' | 'tribunal' | 're
 /** How many questions are answered by choosing a move. The plea is separate. */
 export const CHOICE_QUESTIONS = 9;
 
+/** Seats on the last chopper. Three, and they are not all won the same way. */
+export const SEATS = 3;
+
 export interface Game {
   id: string;
   code: string;
@@ -22,6 +25,13 @@ export interface Game {
   /** Whether that question's outcomes are open to the room. */
   revealed: boolean;
   createdAt: string;
+  /**
+   * 'solo' (the default): every player answers alone. 'consensus': players
+   * are grouped into small teams before the briefing, and a team answers
+   * together — whichever member taps first locks the choice in for all of
+   * them. Host-set, lobby-only; see `Snapshot.myTeam`.
+   */
+  mode: 'solo' | 'consensus';
 }
 
 export interface Player {
@@ -84,12 +94,25 @@ export interface Standing {
   average: number;
 }
 
-export interface Winner {
+export interface Seat {
   playerId: string;
   name: string;
+  /** Which of the SEATS seats this is (1-based), not a ranking. */
+  seat: number;
+  /** How this seat was won — the code, or the room's vote. */
+  path: 'escape' | 'vote';
+  /**
+   * Meaningless for a seat taken by `path: 'escape'` — an escapee can't be
+   * voted for, so this is always 0 for them. The screen branches on `path`,
+   * never on this being zero.
+   */
   votes: number;
   /** Same odds as Standing.average, and the same reason the name stuck. */
   average: number;
+  /** 1-based solve rank, `path: 'escape'` only; null for a vote seat. */
+  solveOrder: number | null;
+  /** True only when this seat is shared: more players tied than the seat allows. */
+  contested: boolean;
 }
 
 /** Everything one viewer is allowed to know right now. */
@@ -115,25 +138,90 @@ export interface Snapshot {
   reveal: RevealRow[] | null;
   /** Everybody's rate. Null until the tribunal, because it is refused before. */
   standings: Standing[] | null;
-  /** Who takes the seat. More than one row means the room could not split them. */
-  winner: Winner[] | null;
+  /** Who takes a seat. More rows than SEATS means the last one is contested. */
+  seats: Seat[] | null;
+  /**
+   * The current round's extraction-manifest digit, if this round carries one
+   * — gone the instant the host advances, by design: reconstructing the code
+   * means having written it down when it was here, not scrolling back.
+   *
+   * In consensus mode, only one member of each team — the round's randomly
+   * assigned "seer" — actually receives this. Everyone else on that team
+   * gets `clueSeer` instead: a name, not a digit, so the only way to learn
+   * it is to ask. Solo mode, and a teamless player, see it exactly like
+   * today: unconditionally, the moment the round opens.
+   */
+  clue: { questionIdx: number; digit: number } | null;
+  /**
+   * Who to ask, when this round carries a clue and it isn't you who saw it.
+   * Null whenever `clue` is populated (no need to tell yourself to ask
+   * yourself), in solo mode, or when this round carries nothing at all.
+   */
+  clueSeer: { name: string } | null;
+  /**
+   * Who has escaped by stating the extraction code, in the order they did —
+   * public from the moment the keypad opens. Knowing somebody solved it
+   * tells you nothing about what they typed, so there is nothing to protect
+   * by hiding this.
+   */
+  escapedPlayerIds: string[];
+  /**
+   * Seconds until I may try the extraction code again. 0 means I'm free to.
+   * There is no lockout state — only ever a short, well-telegraphed pause
+   * after a wrong guess. In consensus mode this is shared across the whole
+   * team (any teammate's wrong guess starts everyone's cooldown, the same
+   * way a shared keypad would), not just the one who typed it.
+   */
+  retryInSeconds: number;
+  /**
+   * How many wrong guesses my team (or, in solo mode, just me) has made so
+   * far this game — shown alongside the shared cooldown so a teammate whose
+   * own phone never touched the keypad still understands why it's resetting.
+   */
+  teamAttempts: number;
+  /**
+   * Everyone's ruthless tally, opened at the tribunal — same phase gate as
+   * `standings`, and null before it for the same reason. Your own tally is
+   * NOT here: it's computed client-side from your own `answers`, which are
+   * always visible to you, exactly like `standings` doesn't duplicate your
+   * own `myScores`.
+   */
+  ruthless: { playerId: string; name: string; marks: number; disqualified: boolean }[] | null;
+  /** The extraction code itself, plus its plain-English recipe. Refused before `result` — that refusal is the seal. */
+  keyReveal: { code: string; recipe: string } | null;
+  /**
+   * Your own team, including you — null in solo mode, or before teams are
+   * assigned (at the lobby). Just IDs: `Player.name` already tells you who's
+   * who, and this is not a secret, so no separate name list is worth keeping
+   * in sync with it.
+   */
+  myTeam: string[] | null;
 }
 
 /** Letters are how the host reads a move aloud, so they live in one place. */
 export const OPTION_LETTERS = ['A', 'B', 'C', 'D', 'E'] as const;
 
 /**
- * Your odds of having survived every question you have a figure for — the
- * product of each one's chance, not their average.
+ * Your survival rate across every question you have a figure for — the
+ * geometric mean of each round's chance, not their arithmetic average.
  *
- * A round's percentage is the chance you make it through THAT round alone. To
- * still be standing after several of them, you have to make it through all of
- * them, and the chance of several independent things all going your way is
- * their product, not their mean: 75% and then 70% is a 52.5% chance of both,
- * not a 72.5% chance of "one of them, on average." An arithmetic mean also
- * cannot fall as the night goes on no matter how bad your calls get, which
- * contradicts the entire premise of the game — every extra round survived is
- * a longer odds bet, and the number on screen has to say so.
+ * A round's percentage is the chance you make it through THAT round alone,
+ * and the chance of several independent things all going your way is their
+ * product, not their sum — 75% and then 70% is a 52.5% chance of both, not a
+ * 72.5% chance of "one of them, on average." A plain arithmetic mean would
+ * lose that: it cannot fall as the night goes on no matter how bad your calls
+ * get, which contradicts the entire premise of the game.
+ *
+ * The raw product still does the right thing mathematically, but it does the
+ * wrong thing on screen: nine rounds compounded together crush BOTH a
+ * near-perfect run and a middling one down toward the same unreadable "1%",
+ * because multiplying nine numbers under 1 shrinks fast regardless of how
+ * good they are. Taking the Nth root undoes exactly that shrinkage — it asks
+ * "what single steady per-round rate would have produced this same product?"
+ * — which rescales the number back onto a legible 0-100 scale without
+ * touching its meaning: the Nth root is a strictly increasing function of the
+ * product, so every ranking and every tie-break that depends on relative
+ * order (see `survivalOddsPrecise`) comes out exactly the same either way.
  *
  * Null rather than zero when there is nothing yet: "has not played" and "died
  * every time" are different facts, and a screen showing 0% for the first is a
@@ -147,17 +235,18 @@ export function survivalOddsOf(scores: MyScore[]): number | null {
 }
 
 /**
- * The same product, unrounded — for comparing two players, never for display.
+ * The same geometric mean, unrounded — for comparing two players, never for
+ * display.
  *
- * Seven compounding rounds routinely lands everyone's odds near zero: even a
- * run of good calls (75, 70, 80, 80, 80, 30, 30) compounds to about 2.4%, and
- * a run of bad ones can round to "0.0%" outright. Two different players can
- * share that same rounded number while their real odds are still ordered —
- * a tie-break, or a ranking, decided on the rounded figure would call that an
- * honest tie when it is not one. Compare on this instead, and round only the
- * number a human actually reads.
+ * Rescaling by the Nth root spreads odds across a legible range instead of
+ * crushing everyone near zero, but two precise values can still land on the
+ * same rounded display by coincidence (e.g. two-round runs of [64, 64] and
+ * [63, 65] both round to "64.0%"). A tie-break or a ranking decided on the
+ * rounded figure would call that an honest tie when it is not one. Compare on
+ * this instead, and round only the number a human actually reads.
  */
 export function survivalOddsPrecise(scores: MyScore[]): number | null {
   if (scores.length === 0) return null;
-  return scores.reduce((odds, s) => odds * (s.survivalPct / 100), 1) * 100;
+  const product = scores.reduce((odds, s) => odds * (s.survivalPct / 100), 1);
+  return Math.pow(product, 1 / scores.length) * 100;
 }

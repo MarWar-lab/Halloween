@@ -52,9 +52,12 @@ export interface Survival {
   leave: () => void;
   reveal: () => Promise<void>;
   advance: () => Promise<void>;
+  setMode: (mode: 'solo' | 'consensus') => Promise<void>;
   answer: (optionIndex: number) => Promise<void>;
   plea: (text: string) => Promise<void>;
   vote: (targetPlayerId: string) => Promise<void>;
+  /** Null means the call failed or was dropped by the in-flight guard — never confuse that with a wrong-code rejection, which resolves normally. */
+  escape: (code: string) => Promise<{ accepted: boolean; retryInSeconds: number } | null>;
 }
 
 export function useSurvival(): Survival {
@@ -185,6 +188,33 @@ export function useSurvival(): Survival {
     [run],
   );
 
+  /** Same guard and error funnelling as `run`, but for the one call whose result the caller actually needs back. */
+  const runFor = useCallback(async <T,>(work: () => Promise<T>): Promise<T | null> => {
+    if (inFlight.current) return null;
+    inFlight.current = true;
+    setBusy(true);
+    setError(null);
+    try {
+      return await work();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      return null;
+    } finally {
+      inFlight.current = false;
+      setBusy(false);
+    }
+  }, []);
+
+  const escape = useCallback(
+    (code: string) =>
+      runFor(async () => {
+        const current = sessionRef.current;
+        if (!current) return { accepted: false, retryInSeconds: 0 };
+        return backend.escape(current.gameId, code);
+      }),
+    [backend, runFor],
+  );
+
   return {
     session,
     snapshot,
@@ -196,8 +226,10 @@ export function useSurvival(): Survival {
     leave,
     reveal: act((id) => backend.reveal(id)),
     advance: act((id) => backend.advance(id)),
+    setMode: (mode: 'solo' | 'consensus') => act((id) => backend.setMode(id, mode))(),
     answer: (optionIndex: number) => act((id) => backend.answer(id, optionIndex))(),
     plea: (text: string) => act((id) => backend.plea(id, text))(),
     vote: (target: string) => act((id) => backend.vote(id, target))(),
+    escape,
   };
 }

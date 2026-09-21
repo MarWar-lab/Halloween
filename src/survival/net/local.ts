@@ -17,7 +17,7 @@
  */
 
 import { SEALED, worstOption } from '../sealed';
-import { CHOICE_QUESTIONS, survivalOddsOf, survivalOddsPrecise } from '../types';
+import { CHOICE_QUESTIONS, SEATS, survivalOddsOf, survivalOddsPrecise } from '../types';
 import type {
   Answer,
   Game,
@@ -25,12 +25,12 @@ import type {
   Player,
   Plea,
   RevealRow,
+  Seat,
   Snapshot,
   Standing,
   Vote,
-  Winner,
 } from '../types';
-import { INTRO_QUESTIONS, QUESTIONS } from '../questions';
+import { EXTRACTION, INTRO_QUESTIONS, QUESTIONS, RUTHLESS_LIMIT, marksOf } from '../questions';
 import { SurvivalError, type SurvivalBackend } from './types';
 
 interface Doc {
@@ -42,6 +42,111 @@ interface Doc {
   scores: { playerId: string; questionIdx: number; survivalPct: number }[];
   pleas: Plea[];
   votes: Vote[];
+  /**
+   * One random digit per round that carries a manifest line — this backend's
+   * OWN independent generator (`Math.random`), not a mirror of anything in
+   * `sealed.ts`. There is no static "correct answer" to keep in sync between
+   * the two backends, unlike survival_pct: whichever backend runs a game
+   * makes up its own extraction code for that game alone.
+   */
+  clueDigits: Record<number, number>;
+  /** THE SEAL for this game. Never put into a Snapshot except via `keyReveal` at `result`. */
+  keyCode: string;
+  keyRecipe: string;
+  /** Every attempt, right or wrong — mirrors `survival_attempts`. */
+  attempts: { playerId: string; at: number; correct: boolean }[];
+  /** The race. No `seat` here on purpose — seat allocation is policy (`computeSeats`), this is just fact. */
+  escapes: { playerId: string; solveOrder: number; at: number }[];
+  /**
+   * Assigned once, from the lobby roster, the moment the briefing starts —
+   * empty in solo mode, and empty in consensus mode until that transition
+   * fires. Never touched again: reshuffling mid-game would strand whichever
+   * teammate is mid-round.
+   */
+  teams: { id: string; memberIds: string[] }[];
+  /**
+   * Which teammate sees which clued round's digit — teamId → questionIdx →
+   * playerId, drawn once alongside `teams`. Everyone else on that team gets
+   * told WHO to ask, never the digit itself: the puzzle is supposed to need
+   * a conversation, not just a shared keypad.
+   */
+  clueSeers: Record<string, Record<number, string>>;
+}
+
+/** The 7 of 9 real questions that carry a manifest line, in question order. */
+const CLUED_QUESTIONS: number[] = QUESTIONS.reduce<number[]>(
+  (acc, q, idx) => (q.manifest ? [...acc, idx] : acc),
+  [],
+);
+
+/** Which question claims to be the green seal for a given berth. */
+function berthQuestionIdx(berth: 1 | 2 | 3 | 4): number {
+  return QUESTIONS.findIndex((q) => q.manifest?.color === 'green' && q.manifest.berth === berth);
+}
+
+/** This backend's own puzzle generator — random per game, never shared with sealed.ts. */
+function generateKey(): { clueDigits: Record<number, number>; code: string; recipe: string } {
+  const clueDigits: Record<number, number> = {};
+  for (const idx of CLUED_QUESTIONS) clueDigits[idx] = Math.floor(Math.random() * 10);
+  const code = ([4, 3, 2, 1] as const).map((berth) => clueDigits[berthQuestionIdx(berth)]).join('');
+  return { clueDigits, code, recipe: `Berth 4 down to berth 1: ${code.split('').join(', ')}.` };
+}
+
+/**
+ * An unbiased shuffle (Fisher–Yates), not `.sort(() => Math.random() - 0.5)`
+ * — that trick is a well-known non-uniform shuffle, and "your teammate is
+ * whoever happened to join near you" is exactly the kind of gameable
+ * randomness a group would notice and resent.
+ */
+function shuffled<T>(items: T[]): T[] {
+  const out = [...items];
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
+}
+
+/**
+ * Pairs, in random order, with the odd one out folded into the LAST team as
+ * a trio rather than left standing alone — 5 players makes [2, 3], not
+ * [2, 2, 1]. Randomised on purpose: who ends up with whom must never be
+ * something a group of friends could arrange by controlling when they join.
+ * A single leftover player (an N of 1) gets a team of one, which is a
+ * degenerate but harmless case: `teamOf` below treats a teamless player
+ * exactly the same way anyway.
+ */
+function chunkIntoTeams(playerIds: string[]): { id: string; memberIds: string[] }[] {
+  const shuffledIds = shuffled(playerIds);
+  const n = shuffledIds.length;
+  if (n === 0) return [];
+  const teamCount = Math.max(1, Math.floor(n / 2));
+  return Array.from({ length: teamCount }, (_, t) => {
+    const start = t * 2;
+    const end = t === teamCount - 1 ? n : start + 2;
+    return { id: `team-${t + 1}`, memberIds: shuffledIds.slice(start, end) };
+  });
+}
+
+/**
+ * A player's team, or a synthetic one-person team if they have none — a
+ * teamless player (consensus mode, but joined after teams were drawn) simply
+ * plays solo rather than being locked out of answering at all.
+ */
+function teamOf(doc: Doc, playerId: string): { id: string; memberIds: string[] } {
+  return doc.teams.find((t) => t.memberIds.includes(playerId)) ?? { id: playerId, memberIds: [playerId] };
+}
+
+/** One random seer per team per clued round — drawn once, alongside the teams themselves. */
+function assignClueSeers(teams: { id: string; memberIds: string[] }[]): Record<string, Record<number, string>> {
+  const seers: Record<string, Record<number, string>> = {};
+  for (const team of teams) {
+    seers[team.id] = {};
+    for (const idx of CLUED_QUESTIONS) {
+      seers[team.id][idx] = team.memberIds[Math.floor(Math.random() * team.memberIds.length)];
+    }
+  }
+  return seers;
 }
 
 const CODE_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
@@ -108,6 +213,7 @@ export class LocalSurvivalBackend implements SurvivalBackend {
     const gameId = uid();
     const playerId = uid();
     const now = new Date().toISOString();
+    const key = generateKey();
 
     writeDoc({
       game: {
@@ -118,6 +224,7 @@ export class LocalSurvivalBackend implements SurvivalBackend {
         questionIdx: 0,
         revealed: false,
         createdAt: now,
+        mode: 'solo',
       },
       players: [
         { id: playerId, gameId, userId: 'local-host', name: name.slice(0, 12), lastSeen: now },
@@ -126,6 +233,13 @@ export class LocalSurvivalBackend implements SurvivalBackend {
       scores: [],
       pleas: [],
       votes: [],
+      clueDigits: key.clueDigits,
+      keyCode: key.code,
+      keyRecipe: key.recipe,
+      attempts: [],
+      escapes: [],
+      teams: [],
+      clueSeers: {},
     });
     localStorage.setItem(codeKey(code), gameId);
     sessionStorage.setItem(pidKey(gameId), playerId);
@@ -225,13 +339,27 @@ export class LocalSurvivalBackend implements SurvivalBackend {
     this.announce(gameId);
   }
 
+  async setMode(gameId: string, mode: 'solo' | 'consensus') {
+    const doc = this.mustRead(gameId);
+    if (!this.isHost(gameId)) throw new SurvivalError('Host only.', 'not_host');
+    if (doc.game.phase !== 'lobby') throw new SurvivalError('Too late to change the mode now.');
+    doc.game.mode = mode;
+    writeDoc(doc);
+    this.announce(gameId);
+  }
+
   async advance(gameId: string) {
     const doc = this.mustRead(gameId);
     if (!this.isHost(gameId)) throw new SurvivalError('Host only.', 'not_host');
     const game = doc.game;
 
-    if (game.phase === 'lobby') game.phase = 'briefing';
-    else if (game.phase === 'briefing') {
+    if (game.phase === 'lobby') {
+      game.phase = 'briefing';
+      if (game.mode === 'consensus') {
+        doc.teams = chunkIntoTeams(doc.players.map((p) => p.id));
+        doc.clueSeers = assignClueSeers(doc.teams);
+      }
+    } else if (game.phase === 'briefing') {
       game.phase = 'running';
       // Starts on the first warm-up (a negative index), not question 0 — see
       // questionAt() in questions.ts for how that sign is resolved back into
@@ -261,7 +389,12 @@ export class LocalSurvivalBackend implements SurvivalBackend {
     if (doc.answers.some((a) => a.playerId === me && a.questionIdx === doc.game.questionIdx)) {
       throw new SurvivalError('You have already chosen.', 'already_chosen');
     }
-    assign(doc, me, doc.game.questionIdx, optionIndex, false);
+    // In consensus mode this fans out to every teammate at once — the check
+    // just above already covers "has this team gone already", because every
+    // member gets a row the moment any one of them taps.
+    for (const playerId of teamOf(doc, me).memberIds) {
+      assign(doc, playerId, doc.game.questionIdx, optionIndex, false);
+    }
     writeDoc(doc);
     this.announce(gameId);
   }
@@ -288,11 +421,62 @@ export class LocalSurvivalBackend implements SurvivalBackend {
     if (!doc.players.some((p) => p.id === targetPlayerId)) {
       throw new SurvivalError('That person is not in this game.');
     }
+    if (doc.escapes.some((e) => e.playerId === targetPlayerId)) {
+      throw new SurvivalError('They are already on the helicopter.');
+    }
+    // Deliberately NOT refusing a vote for a disqualified player: that would
+    // tell the room who is secretly disqualified mid-vote, which is exactly
+    // the surprise "bumped at the reveal" moment this mechanic exists for.
+    // computeSeats() is where a disqualified vote-winner is actually skipped.
     const existing = doc.votes.find((v) => v.voterId === me);
     if (existing) existing.targetPlayerId = targetPlayerId;
     else doc.votes.push({ voterId: me, targetPlayerId });
     writeDoc(doc);
     this.announce(gameId);
+  }
+
+  async escape(gameId: string, code: string) {
+    const doc = this.mustRead(gameId);
+    const me = this.me(gameId);
+    if (!me) throw new SurvivalError('Not in this game.');
+    if (!['running', 'plea', 'tribunal'].includes(doc.game.phase)) {
+      throw new SurvivalError('The keypad is dark right now.');
+    }
+    if (doc.escapes.some((e) => e.playerId === me)) {
+      throw new SurvivalError('You are already aboard.', 'already_escaped');
+    }
+
+    // Consensus mode shares the whole keypad with your team: the same
+    // cooldown (any teammate's wrong guess starts it for all of you), and —
+    // if the code is right — the same seats, all at once.
+    const team = teamOf(doc, me);
+    const teamAttempts = doc.attempts.filter((a) => team.memberIds.includes(a.playerId));
+    const last = teamAttempts.reduce<number | null>((latest, a) => (latest === null || a.at > latest ? a.at : latest), null);
+    const waited = last === null ? Infinity : (Date.now() - last) / 1000;
+    if (waited < EXTRACTION.retrySeconds) {
+      // The client should already be disabling the button for this window;
+      // this refusal is belt-and-suspenders and records nothing new.
+      throw new SurvivalError('The keypad is still resetting.');
+    }
+
+    const normalized = code.replace(/[^0-9]/g, '').slice(0, EXTRACTION.length);
+    const correct = normalized.length === EXTRACTION.length && normalized === doc.keyCode;
+    doc.attempts.push({ playerId: me, at: Date.now(), correct });
+    if (correct) {
+      // One shared batch number for the whole team, not one row each with
+      // its own — computeSeats() groups escapees by this number precisely so
+      // a team that solves it together either all get a seat or all share
+      // the last one, never an arbitrary subset picked by insertion order.
+      const batchOrder = 1 + new Set(doc.escapes.map((e) => e.solveOrder)).size;
+      const now = Date.now();
+      for (const playerId of team.memberIds) {
+        if (doc.escapes.some((e) => e.playerId === playerId)) continue;
+        doc.escapes.push({ playerId, solveOrder: batchOrder, at: now });
+      }
+    }
+    writeDoc(doc);
+    this.announce(gameId);
+    return { accepted: correct, retryInSeconds: correct ? 0 : EXTRACTION.retrySeconds };
   }
 
   heartbeat(gameId: string) {
@@ -321,6 +505,91 @@ const revealedAt = (doc: Doc, questionIdx: number): boolean =>
 
 const ratesAreOpen = (doc: Doc): boolean =>
   doc.game.phase === 'tribunal' || doc.game.phase === 'result';
+
+interface Contender {
+  playerId: string;
+  name: string;
+  votes: number;
+  precise: number;
+  average: number;
+  solveOrder: number | null;
+  marks: number;
+  disqualified: boolean;
+}
+
+/**
+ * Two parallel win paths, computed once from the frozen state at `result`.
+ *
+ * Path A (the race): clean escapees, in solve order, fill seats first — a
+ * disqualified solver is skipped, not reserved; the seat passes to the next
+ * solver. A team escapes as one batch sharing a single solve order (see
+ * `escape()`), so Path A can tie too, not just Path B: a batch that fits
+ * entirely gets consecutive seats, and a batch bigger than the room left
+ * shares the last seat and is marked `contested` — the same handling Path B
+ * already used for an unsplittable vote tie, just grouped on solve order
+ * instead of on votes. Path B (the vote): whatever seats are left fill from
+ * the vote tally among clean non-escapees, tied on the *unrounded* odds.
+ */
+function computeSeats(contenders: Contender[]): Seat[] {
+  const clean = (c: Contender) => !c.disqualified;
+
+  const escapedPool = contenders
+    .filter((c) => c.solveOrder !== null && clean(c))
+    .sort((a, b) => (a.solveOrder as number) - (b.solveOrder as number) || a.name.localeCompare(b.name));
+
+  const seats: Seat[] = [];
+  let escSeatNo = 0;
+  let escIdx = 0;
+  while (escIdx < escapedPool.length && escSeatNo < SEATS) {
+    const head = escapedPool[escIdx];
+    const batch = escapedPool.filter((c) => c.solveOrder === head.solveOrder);
+    const contested = batch.length > SEATS - escSeatNo;
+    for (const c of batch) {
+      if (!contested) escSeatNo += 1;
+      seats.push({
+        playerId: c.playerId,
+        name: c.name,
+        seat: contested ? SEATS : escSeatNo,
+        path: 'escape',
+        votes: c.votes,
+        average: c.average,
+        solveOrder: c.solveOrder,
+        contested,
+      });
+    }
+    escIdx += batch.length;
+    if (contested) break;
+  }
+
+  const pool = contenders
+    .filter((c) => c.solveOrder === null && clean(c))
+    .sort((a, b) => b.votes - a.votes || b.precise - a.precise || a.name.localeCompare(b.name));
+
+  let seatNo = seats.length;
+  let i = 0;
+  while (i < pool.length && seatNo < SEATS) {
+    const head = pool[i];
+    const tiedGroup = pool.filter((c) => c.votes === head.votes && c.precise === head.precise);
+    const contested = tiedGroup.length > SEATS - seatNo;
+    for (const c of tiedGroup) {
+      if (!contested) seatNo += 1;
+      seats.push({
+        playerId: c.playerId,
+        name: c.name,
+        seat: contested ? SEATS : seatNo,
+        path: 'vote',
+        votes: c.votes,
+        average: c.average,
+        solveOrder: null,
+        contested,
+      });
+    }
+    i += tiedGroup.length;
+    if (contested) break;
+  }
+
+  return seats;
+}
 
 /**
  * Apply this viewer's visibility. The same cuts the Postgres policies make,
@@ -367,43 +636,91 @@ function snapshotFor(doc: Doc, me: string | null): Snapshot {
     }));
   }
 
-  // Ranked and tie-broken on the unrounded product — seven compounding rounds
-  // routinely lands several players on the same rounded "0.0%", and deciding
+  // Ranked and tie-broken on the unrounded geometric mean — two players can
+  // still land on the same rounded display by coincidence, and deciding
   // either on that shared display value would call a real difference a tie.
   // `precise` never leaves this function; only the rounded `average` does.
-  const withOdds = doc.players.map((player) => {
+  const contenders: Contender[] = doc.players.map((player) => {
     const mine = doc.scores.filter((s) => s.playerId === player.id);
+    const marks = marksOf(doc.answers, player.id);
+    const escape = doc.escapes.find((e) => e.playerId === player.id);
     return {
       playerId: player.id,
       name: player.name,
-      rounds: mine.length,
+      votes: doc.votes.filter((v) => v.targetPlayerId === player.id).length,
       precise: survivalOddsPrecise(mine) ?? 0,
       average: survivalOddsOf(mine) ?? 0,
+      solveOrder: escape ? escape.solveOrder : null,
+      marks,
+      disqualified: marks >= RUTHLESS_LIMIT,
     };
   });
 
   let standings: Standing[] | null = null;
   if (ratesAreOpen(doc)) {
-    standings = [...withOdds]
+    standings = [...contenders]
       .sort((a, b) => b.precise - a.precise || a.name.localeCompare(b.name))
-      .map(({ playerId, name, rounds, average }) => ({ playerId, name, rounds, average }));
+      .map(({ playerId, name, average }) => ({
+        playerId,
+        name,
+        rounds: doc.scores.filter((s) => s.playerId === playerId).length,
+        average,
+      }));
   }
 
-  let winner: Winner[] | null = null;
-  if (game.phase === 'result') {
-    const tally = withOdds.map((s) => ({
-      ...s,
-      votes: doc.votes.filter((v) => v.targetPlayerId === s.playerId).length,
-    }));
-    const mostVotes = Math.max(0, ...tally.map((t) => t.votes));
-    const contenders = tally.filter((t) => t.votes === mostVotes);
-    const best = Math.max(...contenders.map((t) => t.precise));
-    // Level on both and they share the seat, rather than a third rule nobody
-    // agreed to.
-    winner = contenders
-      .filter((t) => t.precise === best)
-      .map(({ playerId, name, votes, average }) => ({ playerId, name, votes, average }));
+  // Result only, deliberately — NOT tribunal. Exposing this while the vote is
+  // still open would let the room strategically avoid a disqualified
+  // candidate instead of discovering the bump as a surprise at the reveal.
+  const ruthless =
+    game.phase === 'result'
+      ? contenders.map(({ playerId, name, marks, disqualified }) => ({ playerId, name, marks, disqualified }))
+      : null;
+
+  const seats = game.phase === 'result' ? computeSeats(contenders) : null;
+
+  const escapedPlayerIds = [...doc.escapes]
+    .sort((a, b) => a.solveOrder - b.solveOrder)
+    .map((e) => e.playerId);
+
+  // In consensus mode, a clued round's digit goes to one randomly-assigned
+  // seer per team — everyone else on that team gets told who to ask instead
+  // of the number itself. Solo mode, and a teamless player, see it exactly
+  // like before: unconditionally, the moment the round is current.
+  const rawDigit = game.phase === 'running' && game.questionIdx in doc.clueDigits
+    ? doc.clueDigits[game.questionIdx]
+    : null;
+  let clue: Snapshot['clue'] = null;
+  let clueSeer: Snapshot['clueSeer'] = null;
+  if (rawDigit !== null) {
+    const myTeamRow = me ? doc.teams.find((t) => t.memberIds.includes(me)) : undefined;
+    const seerId = game.mode === 'consensus' && myTeamRow ? doc.clueSeers[myTeamRow.id]?.[game.questionIdx] : undefined;
+    if (!seerId || seerId === me) {
+      clue = { questionIdx: game.questionIdx, digit: rawDigit };
+    } else {
+      const seerName = doc.players.find((p) => p.id === seerId)?.name;
+      if (seerName) clueSeer = { name: seerName };
+    }
   }
+
+  // Shared across the whole team in consensus mode — any teammate's wrong
+  // guess starts everyone's cooldown, the same way one shared keypad would.
+  const team = me ? teamOf(doc, me) : null;
+  const teamAttemptRows = team ? doc.attempts.filter((a) => team.memberIds.includes(a.playerId)) : [];
+  const lastAttempt = teamAttemptRows.reduce<number | null>(
+    (latest, a) => (latest === null || a.at > latest ? a.at : latest),
+    null,
+  );
+  const retryInSeconds =
+    lastAttempt === null
+      ? 0
+      : Math.max(0, Math.ceil(EXTRACTION.retrySeconds - (Date.now() - lastAttempt) / 1000));
+  const teamAttempts = teamAttemptRows.filter((a) => !a.correct).length;
+
+  const keyReveal = game.phase === 'result' ? { code: doc.keyCode, recipe: doc.keyRecipe } : null;
+
+  const myTeam = me && game.mode === 'consensus'
+    ? (doc.teams.find((t) => t.memberIds.includes(me))?.memberIds ?? null)
+    : null;
 
   return {
     game,
@@ -417,6 +734,14 @@ function snapshotFor(doc: Doc, me: string | null): Snapshot {
     votedPlayerIds,
     reveal,
     standings,
-    winner,
+    seats,
+    clue,
+    clueSeer,
+    escapedPlayerIds,
+    retryInSeconds,
+    teamAttempts,
+    ruthless,
+    keyReveal,
+    myTeam,
   };
 }

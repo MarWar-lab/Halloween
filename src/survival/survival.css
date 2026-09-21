@@ -325,8 +325,10 @@
   font-size: 0.95rem;
 }
 
+.survival .board-row .rank { color: var(--bone-dim); font-variant-numeric: tabular-nums; }
 .survival .board-row .who { color: var(--phosphor); font-weight: 700; }
 .survival .board-row .said { color: var(--bone-dim); }
+.survival .board-row .seated { color: var(--phosphor); font-weight: 600; }
 .survival .board-row .rate { color: var(--amber); font-size: 1.2em; font-weight: 700; }
 
 /* The private recap, right before the plea composer — the first moment any
@@ -346,6 +348,18 @@
 }
 
 .survival .recap-row .rate { color: var(--phosphor); font-size: 1.2em; font-weight: 700; }
+
+/* Discussion prompts at the very end, built from what the room actually did. */
+.survival .debrief { display: grid; gap: 0.5rem; margin-top: 0.5rem; }
+
+.survival .debrief-row {
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--ink-edge);
+  border-left: 3px solid var(--phosphor-dim);
+  border-radius: 0.4rem;
+  background: var(--ink-raised);
+  font-size: 0.9rem;
+}
 
 .survival .roster {
   display: flex;
@@ -399,6 +413,104 @@
   white-space: nowrap;
 }
 
+/* ── the extraction code ──────────────────────────────────────────────────── */
+
+/* A private scratchpad. Collapsed by default so it costs one line of screen
+   until a player actually wants it — the notes matter most during `running`
+   and inside the keypad, not as a permanent fixture. */
+.survival .notepad summary {
+  cursor: pointer;
+  color: var(--bone-dim);
+  text-decoration: underline;
+  font-size: 0.85rem;
+  padding: 0.5rem 0;
+}
+.survival .notepad textarea { margin-top: 0.5rem; font-size: 0.95rem; }
+
+.survival input.keypad {
+  font-size: 1.8rem;
+  letter-spacing: 0.5em;
+  text-indent: 0.5em;
+}
+
+.survival .keypad-tries { text-align: center; }
+
+/* A one-off transmission — the finale's reminder of the rule, or a manifest
+   line for the current round. Colour AND a left border together, the same
+   "never colour alone" rule the rest of this stylesheet already follows. */
+.survival .transmission {
+  border-left: 3px solid var(--alarm);
+  background: var(--ink-raised);
+  padding: 0.75rem 1rem;
+  font-size: 0.95rem;
+  white-space: pre-line;
+  color: var(--bone);
+}
+.survival .transmission.green { border-left-color: var(--phosphor); }
+.survival .transmission.red { border-left-color: var(--alarm); }
+.survival .transmission.alarm { border-left-color: var(--alarm); }
+
+/* An obscured manifest line — tappable, cursor says so, and the reveal hint
+   restates it in text (never colour or cursor alone). */
+.survival .transmission[role='button'] { cursor: pointer; }
+.survival .transmission .reveal-hint {
+  color: var(--bone-dim);
+  font-size: 0.8em;
+  font-style: italic;
+}
+.survival .transmission.revealed .reveal-hint { display: none; }
+
+/* Consensus mode: a clued round I'm not the seer for — nothing to tap, just
+   a name to go ask. Same obscured-style border, but never the pointer
+   cursor or flicker animation a real reveal target gets. */
+.survival .transmission.asking {
+  font-style: italic;
+  color: var(--bone-dim);
+  animation: none !important;
+}
+
+/* Frost: a cool, breath-fogged pane — the placeholder glyphs drift gently
+   until wiped clear. */
+.survival .transmission.frost:not(.revealed) { border-left-color: #7fd8ff; }
+.survival .transmission.frost:not(.revealed) .reveal-hint { color: #7fd8ff; }
+
+/* Static: a failing screen — the placeholder glyphs flicker like a bad
+   signal until the picture stabilises. */
+.survival .transmission.static:not(.revealed) { animation: survival-flicker 2.4s ease-in-out infinite; }
+
+/* Torn: a physically damaged note — a dashed edge and a slight tilt, as if
+   pinned up in a hurry. */
+.survival .transmission.torn:not(.revealed) {
+  border-style: dashed;
+  border-left-width: 3px;
+  transform: rotate(-0.6deg);
+}
+
+@keyframes survival-flicker {
+  0%, 100% { opacity: 1; }
+  46% { opacity: 1; }
+  48% { opacity: 0.4; }
+  50% { opacity: 1; }
+  72% { opacity: 1; }
+  73% { opacity: 0.5; }
+  75% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .survival .transmission.static:not(.revealed) { animation: none; }
+}
+
+/* Aboard the chopper by the code — shape and colour together, same as
+   `.seat.in`/`.seat.out` above. */
+.survival .seat.aboard { border-color: var(--amber); color: var(--amber); }
+.survival .seat.aboard::before { content: '▲ '; }
+
+.survival .board-row .marks { color: var(--alarm); }
+
+/* A seat this player earned and was refused. The reason stays legible; only
+   the name is struck through. */
+.survival .board-row.bumped .who { text-decoration: line-through; opacity: 0.55; }
+
 .survival .room-bar {
   display: flex;
   justify-content: space-between;
@@ -408,9 +520,10 @@
 }
 .survival .room-bar strong { color: var(--phosphor); letter-spacing: 0.12em; }
 .survival a.link { display: inline-block; font-size: 0.85rem; }
-.survival button:focus-visible, .survival a:focus-visible {
+.survival button:focus-visible, .survival a:focus-visible, .survival [role='button']:focus-visible {
   outline: 2px solid var(--phosphor);
   outline-offset: 3px;
 }
-.survival .phone p, .survival .board-row, .survival .reveal-row, .survival .recap-row { overflow-wrap: anywhere; }
+.survival .phone p, .survival .board-row, .survival .reveal-row, .survival .recap-row,
+.survival .notepad, .survival .transmission { overflow-wrap: anywhere; }
 .survival > .error { flex-shrink: 0; margin: 0.5rem 1rem; }

@@ -165,6 +165,8 @@ select { width: 100%; background: var(--night); color: var(--text);
 .btn-sm { padding: 7px 11px; font-size: 12.5px; min-height: 34px; }
 .small { font-size: 12.5px; }
 .form-error { color: var(--alert); font-size: 14px; margin: 0; }
+.form-error.banner { background: var(--panel); border-bottom: 1px solid var(--alert);
+  padding: 8px 16px; text-align: center; }
 .fallback-note { background: var(--panel); border-left: 2px solid var(--cool);
   padding: 12px 14px; border-radius: var(--r-sm); font-size: 13.5px; color: var(--muted); margin: 0; }
 .leave { position: fixed; bottom: 10px; right: 10px; background: transparent;
