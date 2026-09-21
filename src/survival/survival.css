@@ -476,6 +476,9 @@
    line for the current round. Colour AND a left border together, the same
    "never colour alone" rule the rest of this stylesheet already follows. */
 .survival .transmission {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
   border-left: 3px solid var(--alarm);
   background: var(--ink-raised);
   padding: 0.75rem 1rem;
@@ -486,6 +489,21 @@
 .survival .transmission.green { border-left-color: var(--phosphor); }
 .survival .transmission.red { border-left-color: var(--alarm); }
 .survival .transmission.alarm { border-left-color: var(--alarm); }
+
+/* The rain sits behind the text (isolation + z-index above), never in front
+   of it — this is atmosphere for a line the player still has to read. */
+.survival .digit-rain {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+}
+.survival .transmission-text {
+  position: relative;
+  z-index: 1;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
 
 /* An obscured manifest line — tappable, cursor says so, and the reveal hint
    restates it in text (never colour or cursor alone). */

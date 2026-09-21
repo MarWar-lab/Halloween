@@ -29,6 +29,7 @@ import { buildDebrief } from '../debrief';
 import type { Survival } from '../state/useSurvival';
 import { Clip } from './Clip';
 import { clockOf } from '../puzzles';
+import { DigitRain } from '../scene/DigitRain';
 
 interface Props {
   survival: Survival;
@@ -599,8 +600,14 @@ function ManifestLine({
         if (e.key === 'Enter' || e.key === ' ') setRevealed(true);
       }}
     >
-      {manifest.line(revealed ? String(clue.digit) : copy.placeholder)}
-      {!revealed && <span className="reveal-hint"> — {copy.prompt}</span>}
+      {/* Pours harder while the line is still hidden — the tap that reveals
+          it is the payoff, so the rain settles down once there's a real
+          digit to read instead of competing with it. */}
+      <DigitRain color={manifest.color} intensity={revealed ? 0.15 : 0.7} />
+      <span className="transmission-text">
+        {manifest.line(revealed ? String(clue.digit) : copy.placeholder)}
+        {!revealed && <span className="reveal-hint"> — {copy.prompt}</span>}
+      </span>
     </div>
   );
 }
