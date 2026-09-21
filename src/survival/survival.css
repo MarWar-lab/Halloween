@@ -545,3 +545,76 @@
   color: var(--phosphor);
   margin: 0.5rem 0;
 }
+
+/*
+ * The Exchange — the room's shared ledger.
+ *
+ * Denser than the rest of the screen on purpose: a manifest is a table, and
+ * five lines of it have to be scannable at a glance while somebody is
+ * reading a rule out. The choice buttons above it stay untouched — nothing
+ * in here may make one of THOSE look different from another.
+ */
+.survival .ledger {
+  border: 1px solid var(--ink-edge);
+  border-radius: 0.5rem;
+  padding: 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.survival .berth-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+.survival .berth-tab {
+  font: inherit;
+  font-size: 0.78rem;
+  background: var(--ink-raised);
+  color: var(--bone-dim);
+  border: 1px solid var(--ink-edge);
+  border-radius: 999px;
+  padding: 0.35rem 0.7rem;
+  /* 44px is the tap target floor; these sit in a row of four on a 375px
+     phone, so they get height from padding rather than from min-width. */
+  min-height: 2.2rem;
+}
+.survival .berth-tab.on { color: var(--bone); border-color: var(--bone-dim); }
+.survival .berth-tab.got { color: var(--phosphor); }
+
+.survival .manifest {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.survival .manifest-line {
+  font: inherit;
+  font-size: 0.82rem;
+  text-align: left;
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+  background: var(--ink-raised);
+  color: var(--bone);
+  border: 1px solid var(--ink-edge);
+  border-radius: 0.35rem;
+  padding: 0.55rem 0.6rem;
+  min-height: 2.75rem;
+}
+.survival .manifest-line:active { border-color: var(--phosphor); }
+.survival .manifest-line:disabled { opacity: 0.5; }
+
+.survival .posted {
+  border-left: 2px solid var(--ink-edge);
+  padding-left: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.survival .posted p { margin: 0; font-size: 0.82rem; color: var(--bone-dim); }
+.survival .posted strong { color: var(--bone); }
+
+/* The scattered inline font-size overrides this replaces were all saying
+   the same thing in four slightly different sizes. */
+.survival .fine { font-size: 0.78rem; color: var(--bone-dim); margin: 0; }

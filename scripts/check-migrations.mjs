@@ -1035,6 +1035,101 @@ check("the teammate who did not type it keeps the record and the vote instead",
   !escapedRows.some((r) => r.player_id === pairRows[0].player_id),
   JSON.stringify(escapedRows));
 
+console.log('\n=== the berth puzzles: one answer, and no team able to reach it alone ===');
+// The SQL generator is NOT a mirror of src/survival/puzzles.ts and is not
+// meant to be: a puzzle is per-game random, exactly like the extraction
+// digits, so each backend makes up its own. What the two must share is the
+// PROPERTIES, so the same ones puzzles.test.ts asserts over seeds are
+// asserted here over a real generated game.
+const satisfies = (rule, line) => {
+  switch (rule.kind) {
+    case 'sealParity': return (line.seal % 2 === 0) === rule.even;
+    case 'berthIs': return line.line_berth === rule.berth;
+    case 'berthIsNot': return line.line_berth !== rule.berth;
+    case 'signedBefore': return line.signed_at < rule.minutes;
+    case 'signedAfter': return line.signed_at > rule.minutes;
+    case 'signerIs': return line.signer === rule.signer;
+    default: throw new Error('unknown rule kind: ' + rule.kind);
+  }
+};
+
+await db.exec('reset role;');
+const greens = (await db.query(`select * from survival_green_berths()`)).rows;
+const tRoster = (await db.query(
+  `select count(*)::int as n from survival_players where game_id = $1`, [tgame.id],
+)).rows[0].n;
+check('four green berths carry a puzzle', greens.length === 4, JSON.stringify(greens));
+
+for (const green of greens) {
+  const lines = (await db.query(
+    `select berth, line_id, line_berth, seal, signed_at, signer from survival_berth_lines
+      where game_id = $1 and berth = $2 order by line_id`, [tgame.id, green.berth],
+  )).rows;
+  const frags = (await db.query(
+    `select player_id, rule from survival_fragments where game_id = $1 and berth = $2`,
+    [tgame.id, green.berth],
+  )).rows;
+  const digit = (await db.query(
+    `select digit from survival_clue_digits where game_id = $1 and question_idx = $2`,
+    [tgame.id, green.question_idx],
+  )).rows[0]?.digit;
+
+  check(`berth ${green.berth} puts five lines on the board`, lines.length === 5, `${lines.length}`);
+  check(`berth ${green.berth} deals a fragment to every player`,
+    frags.length === tRoster, `${frags.length} of ${tRoster}`);
+
+  const all = frags.map((f) => f.rule);
+  const left = lines.filter((l) => all.every((r) => satisfies(r, l)));
+  check(`berth ${green.berth} has exactly one surviving line`, left.length === 1,
+    JSON.stringify(left.map((l) => l.line_id)));
+  check(`berth ${green.berth}'s surviving line carries that round's digit`,
+    left.length === 1 && left[0].seal === digit, `${left[0]?.seal} vs ${digit}`);
+
+  // No decoy may share the answer's seal, or a wrong line gives a right digit.
+  check(`berth ${green.berth} never lets a wrong line carry the right digit`,
+    lines.filter((l) => l.seal === digit).length === 1,
+    JSON.stringify(lines.map((l) => l.seal)));
+
+  // The load-bearing one.
+  const teamsOf = (await db.query(
+    `select team_no, array_agg(player_id) as ids from survival_team_members
+      where game_id = $1 group by team_no`, [tgame.id],
+  )).rows;
+  for (const team of teamsOf) {
+    const held = frags.filter((f) => team.ids.includes(f.player_id)).map((f) => f.rule);
+    const narrowed = lines.filter((l) => held.every((r) => satisfies(r, l)));
+    check(`berth ${green.berth} cannot be solved by team ${team.team_no} alone`,
+      narrowed.length > 1, `${narrowed.length} line(s) left`);
+  }
+
+  // And no single fragment may be indispensable — one quiet player must not
+  // be able to strand the room.
+  const spare = frags.filter((_, i) => {
+    const without = all.filter((_, j) => j !== i);
+    return lines.filter((l) => without.every((r) => satisfies(r, l))).length === 1;
+  });
+  check(`berth ${green.berth} survives somebody staying quiet`, spare.length > 0,
+    `${spare.length} of ${frags.length} fragments are droppable`);
+}
+
+check('the answer does not sit in the same slot on every board',
+  new Set(
+    (await db.query(`select answer_line_id from survival_berth_answers where game_id = $1`,
+      [tgame.id])).rows.map((r) => r.answer_line_id),
+  ).size > 1,
+  'four berths all answering to the same line id means the shuffle is not shuffling');
+
+// The answer itself is behind two shut gates, exactly like survival_options.
+await be(pairRows[0].user_id);
+check('a player cannot read the puzzle answers',
+  !!(await refuses(`select * from survival_berth_answers where game_id = $1`, [tgame.id])));
+check("a player cannot read another player's fragment",
+  (await db.query(
+    `select count(*)::int as n from survival_fragments where game_id = $1`, [tgame.id],
+  )).rows[0].n === greens.length,
+  'RLS should leave exactly one fragment per berth visible');
+await db.exec('reset role;');
+
 console.log('\n=== re-applying over a database that already has a game in it ===');
 // This is the real situation on the hosted project: 0001 and 0002 were
 // applied by hand, so `supabase db push` finds an empty migration table and

@@ -28,6 +28,7 @@ import {
 import { buildDebrief } from '../debrief';
 import type { Survival } from '../state/useSurvival';
 import { Clip } from './Clip';
+import { clockOf } from '../puzzles';
 
 interface Props {
   survival: Survival;
@@ -125,6 +126,7 @@ function Task({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
               ? 'Any one of you can lock this in for the whole team. Talk fast.'
               : 'One tap, and it is locked. Choose carefully.'}
           </p>
+          <Exchange survival={survival} snapshot={snapshot} me={me} />
           <Notepad gameId={game.id} me={me} />
         </>
       );
@@ -146,6 +148,7 @@ function Task({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
           {onATeam && <p className="muted" style={{ fontSize: '0.8rem' }}>Locked in by whoever on your team tapped first.</p>}
           <ManifestLine key={game.questionIdx} question={question} snapshot={snapshot} questionIdx={game.questionIdx} />
           <Waiting ids={snapshot.answeredPlayerIds} players={players} verb="chosen" />
+          <Exchange survival={survival} snapshot={snapshot} me={me} />
           <Notepad gameId={game.id} me={me} />
         </div>
       );
@@ -211,6 +214,7 @@ function Task({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
             marks={myMarks}
           />
         )}
+        <Exchange survival={survival} snapshot={snapshot} me={me} />
         <Notepad gameId={game.id} me={me} />
       </>
     );
@@ -613,6 +617,131 @@ function Transmission({ text }: { text: string }) {
  * both game and player: under `?net=local`, several tabs share one
  * `localStorage` but are different people.
  */
+/**
+ * The Exchange — the room's shared ledger, and the only place fragments move.
+ *
+ * Three taps and nothing typed: post the rule you hold, ask for a berth you
+ * cannot finish, or name the line you think survives. None of them needs a
+ * voice, which is the point. A third of any team will not speak up on a call
+ * with twenty people on it, and if trading needs speech then the fragments
+ * only ever move between the people who already talk.
+ *
+ * Posting is irreversible and purely generous: it helps whoever is racing
+ * you for the same seat, and the board records that you did it. That is the
+ * whole tension, and it is the thing the debrief has to work with.
+ */
+function Exchange({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
+  const open = snapshot.puzzles;
+  // Open on the berth that most needs attention: the newest one this team
+  // has not solved, falling back to the newest of all.
+  const firstUnsolved = [...open].reverse().find((p) => p.digit === null);
+  const [showing, setShowing] = useState<number | null>(null);
+  const berth = open.find((p) => p.berth === showing) ?? firstUnsolved ?? open[open.length - 1];
+  if (!berth) return null;
+
+  const nameOf = (id: string) => snapshot.players.find((p) => p.id === id)?.name ?? '—';
+  const solvedCount = open.filter((p) => p.digit !== null).length;
+  const asking = berth.askingPlayerIds.filter((id) => id !== me);
+
+  return (
+    <div className="ledger">
+      <p className="eyebrow">
+        The ledger · {solvedCount} of {EXTRACTION.length} seals
+      </p>
+
+      <div className="berth-tabs" role="tablist">
+        {open.map((p) => (
+          <button
+            key={p.berth}
+            role="tab"
+            aria-selected={p.berth === berth.berth}
+            className={`berth-tab${p.berth === berth.berth ? ' on' : ''}${p.digit !== null ? ' got' : ''}`}
+            onClick={() => setShowing(p.berth)}
+          >
+            {/* Shape as well as colour: across nine of these on a small
+                screen a hue on its own is not a difference. */}
+            {p.digit !== null ? '▍' : '·'} Berth {p.berth}
+            {p.digit !== null && <strong> {p.digit}</strong>}
+          </button>
+        ))}
+      </div>
+
+      {berth.digit !== null ? (
+        <p className="talk">
+          Berth {berth.berth} reads <strong>{berth.digit}</strong>. Your team has it
+          {berth.firstSolvedBy ? ` — ${berth.firstSolvedBy} got there first.` : '.'}
+        </p>
+      ) : (
+        <>
+          <div className="manifest">
+            {berth.lines.map((line) => (
+              <button
+                key={line.id}
+                className="manifest-line"
+                onClick={() => void survival.solveBerth(berth.berth, line.id)}
+                disabled={survival.busy}
+              >
+                <span className="letter" aria-hidden>{line.id}</span>
+                <span>
+                  berth {line.berth} · seal {line.seal} · {clockOf(line.signedAt)} · {line.signer}
+                </span>
+              </button>
+            ))}
+          </div>
+          <p className="fine">Tap the line that survives every rule below.</p>
+        </>
+      )}
+
+      {berth.myRule && (
+        <div className={`transmission${berth.myRulePosted ? ' green' : ''}`}>
+          <p className="eyebrow">{berth.myRulePosted ? 'You published' : 'Yours alone'}</p>
+          <p>{berth.myRule}</p>
+          {!berth.myRulePosted && (
+            <button
+              className="primary"
+              onClick={() => void survival.postFragment(berth.berth)}
+              disabled={survival.busy}
+            >
+              Publish it to the ledger
+            </button>
+          )}
+        </div>
+      )}
+
+      {berth.posted.length > 0 && (
+        <div className="posted">
+          {berth.posted.map((post) => (
+            <p key={post.playerId + post.text}>
+              <strong>{nameOf(post.playerId)}</strong> — {post.text}
+            </p>
+          ))}
+        </div>
+      )}
+
+      {berth.digit === null && (
+        <>
+          {asking.length > 0 && (
+            <p className="fine">
+              {asking.length === 1
+                ? `${nameOf(asking[0])} is asking for this one.`
+                : `${asking.length} people are asking for this one.`}
+            </p>
+          )}
+          {!berth.askingPlayerIds.includes(me) && (
+            <button
+              className="link"
+              onClick={() => void survival.askForBerth(berth.berth)}
+              disabled={survival.busy}
+            >
+              I need berth {berth.berth}
+            </button>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 function Notepad({ gameId, me }: { gameId: string; me: string }) {
   const key = `survival:notes:${gameId}:${me}`;
   const [text, setText] = useState(() => {
@@ -848,6 +977,7 @@ function Keypad({
           </div>
         </div>
       )}
+      <Exchange survival={survival} snapshot={snapshot} me={me} />
       <Notepad gameId={snapshot.game.id} me={me} />
       <button className="link" onClick={onSkip}>I&rsquo;ll take my chances with the room</button>
     </>

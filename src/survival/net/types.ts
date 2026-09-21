@@ -42,6 +42,15 @@ export interface SurvivalBackend {
   plea(gameId: string, text: string): Promise<void>;
   vote(gameId: string, targetPlayerId: string): Promise<void>;
   /**
+   * The Exchange. Three taps, deliberately — see `postFragment` in the local
+   * backend for why none of them is a typed value, and why asking has to be
+   * possible without a voice.
+   */
+  postFragment(gameId: string, berth: number): Promise<void>;
+  askForBerth(gameId: string, berth: number): Promise<void>;
+  solveBerth(gameId: string, berth: number, lineId: number): Promise<{ correct: boolean }>;
+
+  /**
    * Try the extraction code. Returns whether it was accepted and, if not,
    * how many seconds until the same player may try again — never a per-digit
    * hint, never a hard lockout. A correct code is final: calling this again

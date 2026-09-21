@@ -104,6 +104,15 @@ describe('every generated puzzle', () => {
     }
   });
 
+  it('does not always hide the answer in the same slot', () => {
+    // The SQL generator shipped with exactly this bug: `array_agg(... order
+    // by random())` left the valid line in slot one every time, and every
+    // other property still passed. A room would have learned to just pick
+    // the first line.
+    const slots = new Set(SEEDS.map((seed) => buildPuzzle(2, seed % 10, 8, seed).answerLineId));
+    expect(slots).toEqual(new Set([1, 2, 3, 4, 5]));
+  });
+
   it('is reproducible from its seed, and different between berths', () => {
     // Reproducible because a backend that regenerates on every read would
     // change the puzzle under the room mid-negotiation.

@@ -28,6 +28,7 @@ import type {
   Vote,
 } from '../types';
 import { seatsFor } from '../types';
+import { ruleText, type Rule } from '../puzzles';
 import { SurvivalError, type SurvivalBackend } from './types';
 
 interface GameRow {
@@ -177,6 +178,21 @@ export class SupabaseSurvivalBackend implements SurvivalBackend {
         this.client.from('survival_team_members').select('*').eq('game_id', gameId),
         // Who to ask, on the rounds RLS didn't hand me the digit for.
         this.client.rpc('survival_current_clue_seer', { p_game: gameId }),
+        // The berth puzzles. The boards are public and the posts are public;
+        // the fragments table returns exactly MY rows and nobody else's,
+        // which is the asymmetry the whole Exchange runs on.
+        this.client.from('survival_berth_lines').select('*').eq('game_id', gameId).order('line_id'),
+        this.client.from('survival_fragments').select('*').eq('game_id', gameId),
+        this.client.from('survival_posts').select('*').eq('game_id', gameId).order('created_at'),
+        this.client.from('survival_asks').select('*').eq('game_id', gameId),
+        this.client.from('survival_solves').select('*').eq('game_id', gameId).order('created_at'),
+        // Publishing is what makes a fragment readable by anybody else, so
+        // the published ones come back from their own function rather than
+        // from the table, which only ever returns mine.
+        this.client.rpc('survival_posted_fragments', { p_game: gameId }),
+        // And the seals my team has earned — the board is public but the
+        // answer is not, so the digit has to be handed over, not derived.
+        this.client.rpc('survival_my_digits', { p_game: gameId }),
       ]);
 
     for (const response of responses) {
@@ -184,7 +200,10 @@ export class SupabaseSurvivalBackend implements SurvivalBackend {
     }
     const [{ data: playerRows }, { data: answerRows }, { data: scoreRows },
       { data: pleaRows }, { data: voteRows }, { data: progressRows }, { data: clueRows },
-      { data: teamRows }, { data: clueSeerName }] = responses;
+      { data: teamRows }, { data: clueSeerName },
+      { data: lineRows }, { data: fragmentRows }, { data: postRows },
+      { data: askRows }, { data: solveRows },
+      { data: postedRows }, { data: digitRows }] = responses;
 
     // Everything below has already been filtered by row-level security. The
     // client is not choosing what to hide — it could not see the rest to hide
@@ -281,6 +300,44 @@ export class SupabaseSurvivalBackend implements SurvivalBackend {
         .map((r) => r.player_id as string)
       : null;
 
+
+    // The berth puzzles, assembled from five public tables plus the one that
+    // is not. `myRule` comes out of survival_fragments, which RLS has
+    // already narrowed to this player's own rows — the client is not
+    // choosing to hide anybody else's, it never received them.
+    type LineRow = {
+      berth: number; line_id: number; line_berth: number;
+      seal: number; signed_at: number; signer: string;
+    };
+    const byBerth = new Map<number, LineRow[]>();
+    for (const row of (lineRows ?? []) as LineRow[]) {
+      byBerth.set(row.berth, [...(byBerth.get(row.berth) ?? []), row]);
+    }
+    const puzzles: Snapshot['puzzles'] = [...byBerth.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([berth, rows]) => {
+        const mine = (fragmentRows ?? []).find((f) => f.berth === berth);
+        const first = (solveRows ?? []).find((r) => r.berth === berth);
+        return {
+          berth,
+          lines: rows.map((r) => ({
+            id: r.line_id, berth: r.line_berth, seal: r.seal,
+            signedAt: r.signed_at, signer: r.signer,
+          })),
+          myRule: mine ? ruleText(mine.rule as Rule) : null,
+          myRulePosted: (postRows ?? []).some((p) => p.berth === berth && p.player_id === seatId),
+          posted: ((postedRows ?? []) as { berth: number; player_id: string; rule: Rule }[])
+            .filter((p) => p.berth === berth)
+            .map((p) => ({ playerId: p.player_id, text: ruleText(p.rule) })),
+          askingPlayerIds: (askRows ?? []).filter((a) => a.berth === berth).map((a) => a.player_id as string),
+          digit: ((digitRows ?? []) as { berth: number; digit: number }[])
+            .find((d) => d.berth === berth)?.digit ?? null,
+          firstSolvedBy: first
+            ? (playerRows ?? []).find((p) => p.id === first.player_id)?.name ?? null
+            : null,
+        };
+      });
+
     return {
       game,
       players: (playerRows ?? []).map(rowToPlayer),
@@ -308,6 +365,7 @@ export class SupabaseSurvivalBackend implements SurvivalBackend {
       ruthless,
       keyReveal,
       myTeam,
+      puzzles,
     };
   }
 
@@ -414,6 +472,22 @@ export class SupabaseSurvivalBackend implements SurvivalBackend {
   vote = (gameId: string, targetPlayerId: string) =>
     this.call('survival_vote', { p_game: gameId, p_target: targetPlayerId },
       'Your vote did not go through.');
+
+  postFragment = (gameId: string, berth: number) =>
+    this.call('survival_post_fragment', { p_game: gameId, p_berth: berth },
+      'Your fragment did not reach the ledger.');
+
+  askForBerth = (gameId: string, berth: number) =>
+    this.call('survival_ask_berth', { p_game: gameId, p_berth: berth },
+      'Could not put your request on the board.');
+
+  solveBerth = async (gameId: string, berth: number, lineId: number) => {
+    const correct = await this.callFor<boolean>(
+      'survival_solve_berth', { p_game: gameId, p_berth: berth, p_line: lineId },
+      'The terminal did not respond.',
+    );
+    return { correct: Boolean(correct) };
+  };
 
   escape = async (gameId: string, code: string) => {
     const row = await this.callFor<{ correct: boolean; retry_in_seconds: number }>(

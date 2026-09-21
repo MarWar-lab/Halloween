@@ -56,6 +56,12 @@ export interface Survival {
   answer: (optionIndex: number) => Promise<void>;
   plea: (text: string) => Promise<void>;
   vote: (targetPlayerId: string) => Promise<void>;
+  /** Publish the fragment you hold for a berth. Irreversible, and meant to be. */
+  postFragment: (berth: number) => Promise<void>;
+  /** Put "I need this one" on the board, without having to say it out loud. */
+  askForBerth: (berth: number) => Promise<void>;
+  /** Name the line you think survives every published rule. Null if the call was dropped. */
+  solveBerth: (berth: number, lineId: number) => Promise<{ correct: boolean } | null>;
   /** Null means the call failed or was dropped by the in-flight guard — never confuse that with a wrong-code rejection, which resolves normally. */
   escape: (code: string) => Promise<{ accepted: boolean; retryInSeconds: number } | null>;
 }
@@ -205,6 +211,16 @@ export function useSurvival(): Survival {
     }
   }, []);
 
+  const solveBerth = useCallback(
+    (berth: number, lineId: number) =>
+      runFor(async () => {
+        const current = sessionRef.current;
+        if (!current) return { correct: false };
+        return backend.solveBerth(current.gameId, berth, lineId);
+      }),
+    [backend, runFor],
+  );
+
   const escape = useCallback(
     (code: string) =>
       runFor(async () => {
@@ -230,6 +246,9 @@ export function useSurvival(): Survival {
     answer: (optionIndex: number) => act((id) => backend.answer(id, optionIndex))(),
     plea: (text: string) => act((id) => backend.plea(id, text))(),
     vote: (target: string) => act((id) => backend.vote(id, target))(),
+    postFragment: (berth: number) => act((id) => backend.postFragment(id, berth))(),
+    askForBerth: (berth: number) => act((id) => backend.askForBerth(id, berth))(),
+    solveBerth,
     escape,
   };
 }

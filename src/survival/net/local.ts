@@ -33,6 +33,10 @@ import type {
   Vote,
 } from '../types';
 import { EXTRACTION, INTRO_QUESTIONS, QUESTIONS, RUTHLESS_LIMIT, marksOf } from '../questions';
+import {
+  buildPuzzle, dealPuzzle, ruleText,
+  type ManifestLine, type Rule,
+} from '../puzzles';
 import { SurvivalError, type SurvivalBackend } from './types';
 
 interface Doc {
@@ -73,12 +77,37 @@ interface Doc {
    * a conversation, not just a shared keypad.
    */
   clueSeers: Record<string, Record<number, string>>;
+  /**
+   * One puzzle per green berth, built around that berth's digit when the key
+   * is generated. The digit is the ANSWER — it is nowhere in here.
+   */
+  puzzles: { berth: number; lines: ManifestLine[]; answerLineId: number }[];
+  /** Who holds which fragment, per berth. Private until its holder posts it. */
+  fragments: { berth: number; playerId: string; rule: Rule }[];
+  /** The ledger: fragments their holders chose to publish. */
+  posts: { berth: number; playerId: string; at: number }[];
+  /** Open asks. Cleared for a berth once its asker's team has solved it. */
+  asks: { berth: number; playerId: string }[];
+  /** Which teams have read a berth off the board, in the order they did. */
+  solves: { berth: number; teamId: string; playerId: string; at: number }[];
 }
 
 /** The 7 of 9 real questions that carry a manifest line, in question order. */
 const CLUED_QUESTIONS: number[] = QUESTIONS.reduce<number[]>(
   (acc, q, idx) => (q.manifest ? [...acc, idx] : acc),
   [],
+);
+
+/**
+ * The green berths, in the order their rounds open them.
+ *
+ * A berth's puzzle unlocks when its round opens and stays open for the rest
+ * of the night. The red decoy rounds carry no puzzle: they keep the
+ * read-only manifest line they always had, because that is the attention
+ * mechanic and it is woven into the scenario prose.
+ */
+const GREEN_BERTHS: { berth: number; questionIdx: number }[] = QUESTIONS.flatMap((q, idx) =>
+  q.manifest?.color === 'green' ? [{ berth: q.manifest.berth, questionIdx: idx }] : [],
 );
 
 /** Which question claims to be the green seal for a given berth. */
@@ -129,6 +158,70 @@ function chunkIntoTeams(playerIds: string[]): { id: string; memberIds: string[] 
     return { id: `team-${t + 1}`, memberIds: shuffledIds.slice(start, end) };
   });
 }
+
+/**
+ * Build a puzzle per green berth and deal one fragment per player.
+ *
+ * Runs at the lobby→briefing transition, alongside the teams, for the same
+ * reason they do: the roster is fixed by then, and re-dealing later would
+ * change the board under a room that is already negotiating over it.
+ *
+ * The digit is already decided — `generateKey()` picked it when the game was
+ * created — so nothing here touches the seal. It only decides how the room
+ * gets to a number that already existed.
+ */
+function dealPuzzles(doc: Doc) {
+  // In solo mode there are no teams to spread fragments across, so everybody
+  // is their own team. The cross-team guarantee is simply unavailable there,
+  // which is one more reason consensus is the mode worth running.
+  const teams = doc.teams.length > 0
+    ? doc.teams.map((t) => t.memberIds)
+    : doc.players.map((p) => [p.id]);
+  const roster = doc.players.map((p) => p.id);
+
+  doc.puzzles = [];
+  doc.fragments = [];
+  for (const { berth, questionIdx } of GREEN_BERTHS) {
+    const digit = doc.clueDigits[questionIdx];
+    if (digit === undefined) continue;
+    const seed = hashSeed(`${doc.game.id}:${berth}`);
+    const puzzle = buildPuzzle(berth, digit, roster.length, seed);
+    doc.puzzles.push({ berth, lines: puzzle.lines, answerLineId: puzzle.answerLineId });
+    for (const fragment of dealPuzzle(puzzle, teams, seed)) {
+      doc.fragments.push({ berth, playerId: fragment.playerId, rule: fragment.rule });
+    }
+  }
+}
+
+/**
+ * A stable seed per game and berth.
+ *
+ * Stable so the board does not change when the backend recomputes it, and
+ * per-berth so four puzzles in one night are four different puzzles.
+ */
+function hashSeed(text: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    h ^= text.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+/** Which berths are open to the room — unlocked by their round, never re-closed. */
+function unlockedBerths(doc: Doc): number[] {
+  if (doc.game.phase === 'lobby' || doc.game.phase === 'briefing') return [];
+  const reached = doc.game.phase === 'running' ? doc.game.questionIdx : QUESTIONS.length;
+  return GREEN_BERTHS.filter((g) => g.questionIdx <= reached).map((g) => g.berth);
+}
+
+/** Has this player's team read this berth off the board yet? */
+function berthSolvedByTeamOf(doc: Doc, berth: number, playerId: string | null): boolean {
+  if (!playerId) return false;
+  const team = teamOf(doc, playerId);
+  return doc.solves.some((s) => s.berth === berth && team.memberIds.includes(s.playerId));
+}
+
 
 /**
  * A player's team, or a synthetic one-person team if they have none — a
@@ -242,6 +335,11 @@ export class LocalSurvivalBackend implements SurvivalBackend {
       escapes: [],
       teams: [],
       clueSeers: {},
+      puzzles: [],
+      fragments: [],
+      posts: [],
+      asks: [],
+      solves: [],
     });
     localStorage.setItem(codeKey(code), gameId);
     sessionStorage.setItem(pidKey(gameId), playerId);
@@ -361,6 +459,7 @@ export class LocalSurvivalBackend implements SurvivalBackend {
         doc.teams = chunkIntoTeams(doc.players.map((p) => p.id));
         doc.clueSeers = assignClueSeers(doc.teams);
       }
+      dealPuzzles(doc);
     } else if (game.phase === 'briefing') {
       game.phase = 'running';
       // Starts on the first warm-up (a negative index), not question 0 — see
@@ -435,6 +534,83 @@ export class LocalSurvivalBackend implements SurvivalBackend {
     else doc.votes.push({ voterId: me, targetPlayerId });
     writeDoc(doc);
     this.announce(gameId);
+  }
+
+  /**
+   * Publish your fragment for a berth.
+   *
+   * The one irreversible, purely generous act in the game: posting helps
+   * whoever is racing you, and the board records that you did it. Which is
+   * the point — a fragment you keep is a fragment that helps nobody, so the
+   * room only assembles a berth if enough people give something away.
+   *
+   * A tap, never a typed value. You cannot publish a rule you do not hold
+   * and you cannot alter one: colleagues deceiving each other is the wrong
+   * payload for this, and the manifest is a ledger, not a rumour.
+   */
+  async postFragment(gameId: string, berth: number) {
+    const doc = this.mustRead(gameId);
+    const me = this.me(gameId);
+    if (!me) throw new SurvivalError('Not in this game.');
+    if (!unlockedBerths(doc).includes(berth)) throw new SurvivalError('That berth is not open yet.');
+    if (!doc.fragments.some((f) => f.berth === berth && f.playerId === me)) {
+      throw new SurvivalError('You hold nothing for that berth.');
+    }
+    if (doc.posts.some((p) => p.berth === berth && p.playerId === me)) return;
+    doc.posts.push({ berth, playerId: me, at: Date.now() });
+    // Posting answers your own ask, and anybody still asking now has one
+    // more line to work with.
+    doc.asks = doc.asks.filter((a) => !(a.berth === berth && a.playerId === me));
+    writeDoc(doc);
+    this.announce(gameId);
+  }
+
+  /**
+   * Ask the room for help on a berth.
+   *
+   * Also a tap. The quiet third of any team cannot be made to say "does
+   * anybody have berth four" out loud on a call with twenty people on it,
+   * and if asking needs a voice then the fragments only ever move between
+   * the people who already talk.
+   */
+  async askForBerth(gameId: string, berth: number) {
+    const doc = this.mustRead(gameId);
+    const me = this.me(gameId);
+    if (!me) throw new SurvivalError('Not in this game.');
+    if (!unlockedBerths(doc).includes(berth)) throw new SurvivalError('That berth is not open yet.');
+    if (!doc.asks.some((a) => a.berth === berth && a.playerId === me)) {
+      doc.asks.push({ berth, playerId: me });
+    }
+    writeDoc(doc);
+    this.announce(gameId);
+  }
+
+  /**
+   * Name the line you think survives every published rule.
+   *
+   * Right, and your whole team can read the seal off it — the team solves
+   * together even though only one of you will walk through the door. Wrong,
+   * and nothing happens at all: there is no cost, no cooldown and no limit
+   * here, because this is the part of the night that is supposed to reward
+   * trying things, and the keypad downstairs already carries the stakes.
+   */
+  async solveBerth(gameId: string, berth: number, lineId: number) {
+    const doc = this.mustRead(gameId);
+    const me = this.me(gameId);
+    if (!me) throw new SurvivalError('Not in this game.');
+    const puzzle = doc.puzzles.find((p) => p.berth === berth);
+    if (!puzzle) throw new SurvivalError('No such berth.');
+    if (!unlockedBerths(doc).includes(berth)) throw new SurvivalError('That berth is not open yet.');
+    if (berthSolvedByTeamOf(doc, berth, me)) return { correct: true };
+
+    if (lineId !== puzzle.answerLineId) return { correct: false };
+
+    doc.solves.push({ berth, teamId: teamOf(doc, me).id, playerId: me, at: Date.now() });
+    const team = teamOf(doc, me);
+    doc.asks = doc.asks.filter((a) => !(a.berth === berth && team.memberIds.includes(a.playerId)));
+    writeDoc(doc);
+    this.announce(gameId);
+    return { correct: true };
   }
 
   async escape(gameId: string, code: string) {
@@ -754,6 +930,54 @@ function snapshotFor(doc: Doc, me: string | null): Snapshot {
     }
   }
 
+  /**
+   * The berth puzzles, cut to what this viewer may see.
+   *
+   * `lines` and `posted` are public: the manifest is a published ledger and
+   * a posted fragment is one somebody chose to publish. `myRule` is yours
+   * alone until you post it — that asymmetry IS the mechanic, and it is
+   * applied here rather than in the view for the same reason every other
+   * cut in this function is.
+   *
+   * `digit` is per TEAM, not per room: your team read it off the board, so
+   * your team has it. Another team that has not done the deduction still
+   * has to do the deduction.
+   */
+  const open = unlockedBerths(doc);
+  const puzzles: Snapshot['puzzles'] = doc.puzzles
+    .filter((p) => open.includes(p.berth))
+    .sort((a, b) => a.berth - b.berth)
+    .map((p) => {
+      const mine = me ? doc.fragments.find((f) => f.berth === p.berth && f.playerId === me) : undefined;
+      const posted = doc.posts
+        .filter((post) => post.berth === p.berth)
+        .sort((a, b) => a.at - b.at)
+        .map((post) => ({
+          playerId: post.playerId,
+          text: ruleText(
+            (doc.fragments.find((f) => f.berth === p.berth && f.playerId === post.playerId) as
+              { rule: Rule }).rule,
+          ),
+        }));
+      const firstSolve = doc.solves
+        .filter((sv) => sv.berth === p.berth)
+        .sort((a, b) => a.at - b.at)[0];
+      return {
+        berth: p.berth,
+        lines: p.lines,
+        myRule: mine ? ruleText(mine.rule) : null,
+        myRulePosted: me ? doc.posts.some((post) => post.berth === p.berth && post.playerId === me) : false,
+        posted,
+        askingPlayerIds: doc.asks.filter((a) => a.berth === p.berth).map((a) => a.playerId),
+        digit: berthSolvedByTeamOf(doc, p.berth, me)
+          ? p.lines.find((l) => l.id === p.answerLineId)?.seal ?? null
+          : null,
+        firstSolvedBy: firstSolve
+          ? doc.players.find((pl) => pl.id === firstSolve.playerId)?.name ?? null
+          : null,
+      };
+    });
+
   // Shared across the whole team in consensus mode — any teammate's wrong
   // guess starts everyone's cooldown, the same way one shared keypad would.
   const team = me ? teamOf(doc, me) : null;
@@ -788,6 +1012,7 @@ function snapshotFor(doc: Doc, me: string | null): Snapshot {
     standings,
     seats,
     seatCount,
+    puzzles,
     clue,
     clueSeer,
     escapedPlayerIds,

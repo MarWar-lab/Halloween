@@ -12,7 +12,7 @@ const base = (phase: Snapshot['game']['phase']): Snapshot => ({
   reveal: null, standings: null,
   seats: [{ playerId: 'Hana', name: 'Hana', seat: 1, path: 'vote', votes: 1, average: 65, solveOrder: null, contested: false }],
   clue: null, clueSeer: null, escapedPlayerIds: [], retryInSeconds: 0, teamAttempts: 0,
-  ruthless: null, keyReveal: null, myTeam: null, seatCount: 3,
+  ruthless: null, keyReveal: null, myTeam: null, seatCount: 3, puzzles: [],
 });
 const render = (snapshot: Snapshot, isHost = true) => {
   vi.stubGlobal('window', { location: { href: 'http://localhost/survive?net=local', host: 'localhost' } });

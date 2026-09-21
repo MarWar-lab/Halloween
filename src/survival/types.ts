@@ -128,6 +128,32 @@ export interface Seat {
   contested: boolean;
 }
 
+/**
+ * One berth's puzzle, as this viewer is allowed to see it.
+ *
+ * `lines` and `posted` are public — the manifest is a published ledger and
+ * a posted fragment is a fragment somebody chose to publish. `myRule` is
+ * private until its holder posts it, which is the whole mechanic: a
+ * fragment you keep is a fragment that helps nobody but you.
+ */
+export interface BerthPuzzle {
+  berth: number;
+  /** The five candidate lines, public from the round this berth unlocks. */
+  lines: { id: number; berth: number; seal: number; signedAt: number; signer: string }[];
+  /** Your own verification rule, as prose. Null if you joined after the deal. */
+  myRule: string | null;
+  /** Whether you have already published it. */
+  myRulePosted: boolean;
+  /** Everything the room has published, with who published it. */
+  posted: { playerId: string; text: string }[];
+  /** Who has asked for help on this berth and not yet been answered. */
+  askingPlayerIds: string[];
+  /** The digit, once YOUR team has read it off the board. Null before that. */
+  digit: number | null;
+  /** Who got there first, once anybody has. Public — a race nobody can hide. */
+  firstSolvedBy: string | null;
+}
+
 /** Everything one viewer is allowed to know right now. */
 export interface Snapshot {
   game: Game;
@@ -215,6 +241,15 @@ export interface Snapshot {
    * in sync with it.
    */
   myTeam: string[] | null;
+  /**
+   * The berth puzzles that have unlocked, in berth order.
+   *
+   * Empty until the first green round opens. Each stays open for the rest
+   * of the night rather than closing with its round: a fast team can work
+   * ahead, a slow one can catch up, and the host never has to hold the
+   * whole room on the slowest solver.
+   */
+  puzzles: BerthPuzzle[];
 }
 
 /** Letters are how the host reads a move aloud, so they live in one place. */
