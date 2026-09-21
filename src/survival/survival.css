@@ -490,10 +490,13 @@
 /* ── the manifest terminal ──────────────────────────────────────────────── */
 
 /*
- * The old monitor beside a manifest line — its own object, stacked above the
+ * An open laptop beside a manifest line — its own object, stacked above the
  * transmission text rather than underneath it. `.crt-rig` is the whole prop
- * (monitor + label); `.crt-bezel`/`.crt-screen` are the frame and the glass;
- * `.digit-rain` is only ever painted inside `.crt-screen`, never elsewhere.
+ * (laptop + label); `.crt-lid`/`.crt-bezel`/`.crt-screen` are the lid, its
+ * frame and the glass; `.crt-deck` is the keyboard half. `.digit-rain` is
+ * only ever painted inside `.crt-screen`, never elsewhere. Generic on
+ * purpose — no logo, no particular model, just the shape every laptop
+ * shares — drawn with gradients and shadows rather than a photo.
  */
 .survival .manifest-rig {
   display: grid;
@@ -503,16 +506,42 @@
 
 .survival .crt-rig { display: grid; justify-items: center; gap: 0.35rem; }
 
+.survival .crt-laptop {
+  width: 100%;
+  max-width: 240px;
+  display: grid;
+  justify-items: center;
+}
+
+/* The lid: bezel, camera notch, screen — flat-on, so the screen stays fully
+   legible rather than foreshortened by a perspective tilt. */
+.survival .crt-lid {
+  position: relative;
+  width: 100%;
+  border-radius: 0.6rem 0.6rem 0.25rem 0.25rem;
+  padding: 0.55rem 0.5rem 0.35rem;
+  background: linear-gradient(160deg, #3a4048, #16191c 65%);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.6) inset,
+    0 1px 0 rgba(255, 255, 255, 0.06) inset;
+}
+
+.survival .crt-camera {
+  width: 5px;
+  height: 5px;
+  margin: 0 auto 0.35rem;
+  border-radius: 50%;
+  background: #05070a;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.08);
+}
+
 .survival .crt-bezel {
   width: 100%;
-  max-width: 220px;
-  aspect-ratio: 4 / 3;
-  border-radius: 0.9rem;
-  padding: 0.5rem;
-  background: linear-gradient(155deg, #262b30, #101316 60%);
-  box-shadow:
-    0 0 0 1px #000 inset,
-    0 6px 14px rgba(0, 0, 0, 0.5);
+  aspect-ratio: 16 / 10;
+  border-radius: 0.2rem;
+  padding: 0.4rem;
+  background: #0a0c0e;
+  box-shadow: 0 0 0 1px #000 inset;
 }
 
 .survival .crt-screen {
@@ -520,7 +549,7 @@
   width: 100%;
   height: 100%;
   overflow: hidden;
-  border-radius: 0.5rem;
+  border-radius: 0.15rem;
   background: #030405;
   box-shadow: 0 0 18px 2px var(--crt-glow, rgba(61, 220, 132, 0.35)) inset;
 }
@@ -534,8 +563,8 @@
   height: 100%;
 }
 
-/* Scanlines and a soft dark vignette at the screen's edge — glass curvature
-   without an image asset. */
+/* Scanlines, a diagonal glare and a soft dark vignette at the screen's
+   edge — glass without an image asset. */
 .survival .crt-scanlines {
   position: absolute;
   inset: 0;
@@ -548,11 +577,63 @@
   );
   mix-blend-mode: multiply;
 }
+.survival .crt-glare {
+  position: absolute;
+  inset: -20% -60%;
+  background: linear-gradient(
+    115deg,
+    transparent 40%,
+    rgba(255, 255, 255, 0.05) 48%,
+    rgba(255, 255, 255, 0.09) 50%,
+    rgba(255, 255, 255, 0.05) 52%,
+    transparent 60%
+  );
+  pointer-events: none;
+}
 .survival .crt-vignette {
   position: absolute;
   inset: 0;
-  box-shadow: 0 0 22px 10px rgba(0, 0, 0, 0.65) inset;
-  border-radius: 0.5rem;
+  box-shadow: 0 0 16px 8px rgba(0, 0, 0, 0.65) inset;
+  border-radius: 0.15rem;
+}
+
+/* The hinge and the keyboard deck, foreshortened slightly with `skewX` so
+   the machine reads as sitting open rather than as two flat rectangles
+   stacked on top of each other. */
+.survival .crt-hinge {
+  width: 88%;
+  height: 5px;
+  background: linear-gradient(to bottom, #0a0c0e, #24282d);
+  border-radius: 0 0 2px 2px;
+}
+
+.survival .crt-deck {
+  width: 96%;
+  padding: 0.4rem 0.6rem 0.55rem;
+  border-radius: 0 0 0.5rem 0.5rem;
+  background: linear-gradient(to bottom, #2c3136, #1a1d20);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.4);
+  transform: perspective(200px) rotateX(35deg);
+  transform-origin: top;
+}
+
+.survival .crt-keys { display: grid; gap: 2px; margin-bottom: 0.3rem; }
+.survival .crt-key-row { display: flex; gap: 2px; justify-content: center; }
+.survival .crt-key {
+  width: 6px;
+  height: 4px;
+  border-radius: 1px;
+  background: #3a3f45;
+  box-shadow: 0 0.5px 0 rgba(255, 255, 255, 0.08) inset;
+}
+
+.survival .crt-trackpad {
+  width: 30%;
+  height: 8px;
+  margin: 0 auto;
+  border-radius: 2px;
+  background: #24282d;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4) inset;
 }
 
 .survival .crt-label {
