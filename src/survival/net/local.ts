@@ -194,6 +194,22 @@ function dealPuzzles(doc: Doc) {
 }
 
 /**
+ * A rule true of every line in a berth's puzzle — the same thing padding
+ * already is, derived the same way `buildPuzzle`'s own padding is: every
+ * line is signed after SOME point, so a moment before the earliest one is
+ * true of all five without discriminating between any of them.
+ *
+ * For dealing a late joiner a fragment after the fact, never for the
+ * original deal: it exists so a player who arrives once a puzzle is already
+ * open still holds something to post, without touching which rules are key
+ * and which team holds them.
+ */
+function spareRuleFor(lines: { signedAt: number }[]): Rule {
+  const earliest = Math.min(...lines.map((l) => l.signedAt));
+  return { kind: 'signedAfter', minutes: earliest - 1 };
+}
+
+/**
  * A stable seed per game and berth.
  *
  * Stable so the board does not change when the backend recomputes it, and
@@ -367,6 +383,25 @@ export class LocalSurvivalBackend implements SurvivalBackend {
         name: name.slice(0, 12),
         lastSeen: new Date().toISOString(),
       });
+
+      // Fold into the smallest team rather than leaving them teamless. A
+      // teamless late joiner plays every puzzle as a team of one — which,
+      // for whichever berth their arrival happens to matter on, is exactly
+      // the single point of failure noTeamSolves exists to rule out.
+      if (doc.teams.length > 0) {
+        const smallest = [...doc.teams].sort((a, b) => a.memberIds.length - b.memberIds.length)[0];
+        smallest.memberIds.push(playerId);
+
+        // And deal them a fragment for every berth already open, so they
+        // hold something to trade like everyone else. Always a SPARE rule,
+        // never a key one: the key rules are already placed with whoever
+        // was on the team when the puzzle was dealt, and handing one to the
+        // new arrival instead would just move it, not add to it.
+        for (const puzzle of doc.puzzles) {
+          doc.fragments.push({ berth: puzzle.berth, playerId, rule: spareRuleFor(puzzle.lines) });
+        }
+      }
+
       // Arriving late costs you every question the room has already been
       // through. Mirrors survival_join: no player ever has a gap.
       for (let q = 0; q < CHOICE_QUESTIONS; q += 1) {

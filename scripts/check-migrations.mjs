@@ -1153,6 +1153,57 @@ check("a player cannot read another player's fragment",
   'RLS should leave exactly one fragment per berth visible');
 await db.exec('reset role;');
 
+console.log('\n=== a late joiner folds into a team and is dealt a spare fragment ===');
+// Real gap this closes: a player arriving after teams and puzzles are
+// already dealt used to stay teamless and hold nothing for any berth — a
+// team of one for every puzzle in the room, exactly the single point of
+// failure noTeamSolves exists to rule out.
+const TLATE = 'b0b0b0b0-b0b0-b0b0-b0b0-b0b0b0b0b0b0';
+await be(TLATE);
+const late = (await db.query(`select * from survival_join($1, 'T-Late')`, [tgame.code])).rows[0];
+
+await db.exec('reset role;');
+const lateTeam = (await db.query(
+  `select team_no from survival_team_members where game_id = $1 and player_id = $2`,
+  [tgame.id, late.id],
+)).rows[0]?.team_no;
+check('a late joiner is folded into a team, not left teamless', lateTeam != null);
+
+const teamSizesNow = (await db.query(
+  `select team_no, count(*)::int as n from survival_team_members
+    where game_id = $1 group by team_no order by team_no`, [tgame.id],
+)).rows;
+check('she landed on whichever team was smallest at the time',
+  lateTeam === teamSizesNow.reduce((a, b) => (b.n < a.n ? b : a)).team_no
+  || teamSizesNow.filter((t) => t.n === Math.min(...teamSizesNow.map((x) => x.n))).some((t) => t.team_no === lateTeam),
+  JSON.stringify({ lateTeam, teamSizesNow }));
+
+const lateFrags = (await db.query(
+  `select berth from survival_fragments where game_id = $1 and player_id = $2`, [tgame.id, late.id],
+)).rows;
+check('she was dealt a fragment for every berth already open',
+  lateFrags.length === greens.length, `${lateFrags.length} of ${greens.length}`);
+
+await db.exec('reset role;');
+const herOwnFrags = (await db.query(
+  `select berth, rule from survival_fragments where game_id = $1 and player_id = $2`, [tgame.id, late.id],
+)).rows;
+let allSpare = true;
+for (const f of herOwnFrags) {
+  const berthLines = (await db.query(
+    `select seal, signed_at, line_berth from survival_berth_lines where game_id = $1 and berth = $2`,
+    [tgame.id, f.berth],
+  )).rows;
+  const satisfiesAll = berthLines.every((l) => satisfies(
+    { kind: f.rule.kind, minutes: f.rule.minutes, berth: f.rule.berth, even: f.rule.even, signer: f.rule.signer },
+    { seal: l.seal, signed_at: l.signed_at, line_berth: l.line_berth },
+  ));
+  if (!satisfiesAll) allSpare = false;
+}
+check("her fragment for every berth is a spare rule — true of every line on that board, not a key one",
+  allSpare, JSON.stringify(herOwnFrags));
+await db.exec('reset role;');
+
 console.log('\n=== re-applying over a database that already has a game in it ===');
 // This is the real situation on the hosted project: 0001 and 0002 were
 // applied by hand, so `supabase db push` finds an empty migration table and

@@ -734,7 +734,7 @@ describe('consensus mode', () => {
     await expect(backend.answer(made.gameId, 3)).rejects.toThrow();
   });
 
-  it('lets a late joiner (no team yet drawn) keep answering solo', async () => {
+  it("folds a late joiner into the smallest team, once one has been drawn", async () => {
     installBrowser();
     const backend = new LocalSurvivalBackend();
     tab('hana');
@@ -749,17 +749,56 @@ describe('consensus mode', () => {
 
     tab('lee');
     await backend.join(made.code, 'Lee');
-    expect(seenBy(backend, 'lee', made.gameId).myTeam).toBeNull();
-
-    // Lee has no team, but can still answer for herself alone.
-    await backend.answer(made.gameId, 1);
     const lee = seenBy(backend, 'lee', made.gameId);
     const leeId = idOf(lee, 'Lee');
-    expect(lee.answers.find((a) => a.playerId === leeId && a.questionIdx === 0)?.optionIndex).toBe(1);
-    // It never touched Hana or Cara's team.
+
+    // Not teamless: a late joiner used to play every puzzle as a team of
+    // one, which is exactly the single point of failure noTeamSolves exists
+    // to rule out. {Hana, Cara} was the only team, so Lee joins it.
+    expect(lee.myTeam).not.toBeNull();
+    expect(lee.myTeam).toContain(leeId);
+    expect(lee.myTeam?.length).toBe(3);
+
+    // And because she is now on their team, her tap locks the answer for
+    // Hana and Cara too — the same fan-out any other teammate's tap has.
+    await backend.answer(made.gameId, 1);
     const hana = seenBy(backend, 'hana', made.gameId);
     const hanaId = idOf(hana, 'Hana');
-    expect(hana.answers.some((a) => a.playerId === hanaId && a.questionIdx === 0)).toBe(false);
+    expect(hana.answers.find((a) => a.playerId === hanaId && a.questionIdx === 0)?.optionIndex).toBe(1);
+  });
+
+  it('deals a late joiner a fragment for every berth already open', async () => {
+    installBrowser();
+    const backend = new LocalSurvivalBackend();
+    tab('hana');
+    const made = await backend.create('Hana');
+    tab('cara');
+    await backend.join(made.code, 'Cara');
+    tab('hana');
+    await backend.setMode(made.gameId, 'consensus');
+    await backend.advance(made.gameId); // briefing — teams and puzzles are dealt here
+    await backend.advance(made.gameId); // running
+    await skipWarmups(backend, made.gameId);
+    await backend.answer(made.gameId, 1);
+    tab('hana');
+    await backend.reveal(made.gameId);
+    await backend.advance(made.gameId); // → question 1, berth 1 opens
+
+    tab('lee');
+    await backend.join(made.code, 'Lee');
+    const lee = seenBy(backend, 'lee', made.gameId);
+    const berth1 = lee.puzzles.find((p) => p.berth === 1);
+
+    // She holds SOMETHING for the open berth — nobody arrives to an empty
+    // hand — and it is never null the way a teamless late joiner's used to
+    // read before this fix.
+    expect(berth1?.myRule).not.toBeNull();
+
+    // And it never solves the berth by itself: a spare rule is, by
+    // construction, true of every line, so posting only Lee's fragment must
+    // never narrow the board down to one.
+    const lines = berth1?.lines ?? [];
+    expect(lines.length).toBeGreaterThan(1);
   });
 
   it('setMode is host-only and lobby-only', async () => {
