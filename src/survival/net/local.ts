@@ -1038,6 +1038,9 @@ function snapshotFor(doc: Doc, me: string | null): Snapshot {
   const myTeam = me && game.mode === 'consensus'
     ? (doc.teams.find((t) => t.memberIds.includes(me))?.memberIds ?? null)
     : null;
+  const teams = game.mode === 'consensus' && doc.teams.length > 0
+    ? doc.teams.map((t) => ({ id: t.id, memberIds: t.memberIds }))
+    : null;
 
   return {
     game,
@@ -1062,5 +1065,6 @@ function snapshotFor(doc: Doc, me: string | null): Snapshot {
     ruthless,
     keyReveal,
     myTeam,
+    teams,
   };
 }

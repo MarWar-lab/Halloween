@@ -12,7 +12,7 @@ const base = (phase: Snapshot['game']['phase']): Snapshot => ({
   reveal: null, standings: null,
   seats: [{ playerId: 'Hana', name: 'Hana', seat: 1, path: 'vote', votes: 1, average: 65, solveOrder: null, contested: false }],
   clue: null, clueSeer: null, escapedPlayerIds: [], retryInSeconds: 0, teamAttempts: 0,
-  ruthless: null, keyReveal: null, myTeam: null, seatCount: 3, puzzles: [],
+  ruthless: null, keyReveal: null, myTeam: null, teams: null, seatCount: 3, puzzles: [],
 });
 const render = (snapshot: Snapshot, isHost = true) => {
   vi.stubGlobal('window', { location: { href: 'http://localhost/survive?net=local', host: 'localhost' } });
@@ -175,4 +175,46 @@ it('shows who fed the ledger, on the result screen, from public post data', () =
   const html = render(snap);
   expect(html).toContain('Who fed the ledger');
   expect(html).toContain('Hana published 1 fragment');
+});
+
+it('shows the host every team, not just the viewer\'s own', () => {
+  const snap = base('briefing');
+  snap.game.mode = 'consensus';
+  snap.teams = [
+    { id: 'team-1', memberIds: ['Hana', 'Cara'] },
+  ];
+  snap.myTeam = ['Hana', 'Cara'];
+  const html = render(snap, true);
+  expect(html).toContain('Team 1:');
+  expect(html).toContain('Hana');
+  expect(html).toContain('Cara');
+});
+
+it('shows the host no team roster in solo mode', () => {
+  const snap = base('briefing');
+  snap.teams = null;
+  const html = render(snap, true);
+  expect(html).not.toContain('team-roster');
+});
+
+it('gives the board a per-team average once standings open, from figures it already prints', () => {
+  const snap = base('tribunal');
+  snap.teams = [{ id: 'team-1', memberIds: ['Hana', 'Cara'] }];
+  snap.standings = [
+    { playerId: 'Hana', name: 'Hana', rounds: 7, average: 60 },
+    { playerId: 'Cara', name: 'Cara', rounds: 7, average: 40 },
+  ];
+  const html = render(snap);
+  expect(html).toContain('By team');
+  expect(html).toContain('Team 1: Hana, Cara');
+  // (60 + 40) / 2 = 50
+  expect(html).toContain('50%');
+});
+
+it('shows no team row before standings are public, even with teams drawn', () => {
+  const snap = base('plea');
+  snap.teams = [{ id: 'team-1', memberIds: ['Hana', 'Cara'] }];
+  snap.standings = null;
+  const html = render(snap);
+  expect(html).not.toContain('By team');
 });

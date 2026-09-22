@@ -467,6 +467,28 @@
 .survival .board-row .seated { color: var(--phosphor); font-weight: 600; }
 .survival .board-row .rate { color: var(--amber); font-size: 1.2em; font-weight: 700; }
 
+/*
+ * The one "we" the board offers, above all the "who"s — an arithmetic mean
+ * of figures each individual row already prints, never a new number.
+ */
+.survival .team-standings { display: grid; gap: 0.35rem; margin-bottom: 0.6rem; }
+.survival .team-standing-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 1rem;
+  align-items: center;
+  padding: 0.4rem 0.9rem;
+  border-radius: 0.4rem;
+  background: var(--ink-raised);
+  border: 1px dashed var(--ink-edge);
+  font-size: 0.88rem;
+  color: var(--bone-dim);
+}
+.survival .team-standing-row .rate { color: var(--amber); font-weight: 700; }
+
+/* The host-only team roster, in the console. */
+.survival .team-roster { display: grid; gap: 0.2rem; margin: 0.4rem 0; }
+
 /* The private recap, right before the plea composer — the first moment any
    number has been visible at all, and it is still only ever your own. */
 .survival .recap-list { display: grid; gap: 0.5rem; }

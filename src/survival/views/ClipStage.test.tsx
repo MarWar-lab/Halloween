@@ -14,7 +14,7 @@ const snap = (game: Snapshot['game'], answers: Snapshot['answers'] = []): Snapsh
   answeredPlayerIds: [], pleadedPlayerIds: [], votedPlayerIds: [],
   reveal: null, standings: null, seats: null, clue: null, clueSeer: null,
   escapedPlayerIds: [], retryInSeconds: 0, teamAttempts: 0, ruthless: null,
-  keyReveal: null, myTeam: null, seatCount: 3, puzzles: [],
+  keyReveal: null, myTeam: null, teams: null, seatCount: 3, puzzles: [],
 });
 
 it('renders nothing outside the running phase', () => {

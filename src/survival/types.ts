@@ -245,6 +245,13 @@ export interface Snapshot {
    */
   myTeam: string[] | null;
   /**
+   * Every team in the room, not just your own — the host needs the full
+   * roster to run the night, and team membership was never a secret in the
+   * first place (see `myTeam` above). Null under the same conditions:
+   * solo mode, or before the briefing has drawn any teams.
+   */
+  teams: { id: string; memberIds: string[] }[] | null;
+  /**
    * The berth puzzles that have unlocked, in berth order.
    *
    * Empty until the first green round opens. Each stays open for the rest

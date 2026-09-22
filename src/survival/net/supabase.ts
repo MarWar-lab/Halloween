@@ -300,6 +300,19 @@ export class SupabaseSurvivalBackend implements SurvivalBackend {
         .map((r) => r.player_id as string)
       : null;
 
+    // Every team, not just mine — the host needs the full roster, and team
+    // membership was never a secret (nothing here narrows what `teamRows`
+    // already granted every member of the game).
+    const teamNumbers = [...new Set((teamRows ?? []).map((r) => r.team_no as number))];
+    const teams = teamNumbers.length > 0
+      ? teamNumbers.map((teamNo) => ({
+        id: `team-${teamNo}`,
+        memberIds: (teamRows ?? [])
+          .filter((r) => r.team_no === teamNo)
+          .map((r) => r.player_id as string),
+      }))
+      : null;
+
 
     // The berth puzzles, assembled from five public tables plus the one that
     // is not. `myRule` comes out of survival_fragments, which RLS has
@@ -365,6 +378,7 @@ export class SupabaseSurvivalBackend implements SurvivalBackend {
       ruthless,
       keyReveal,
       myTeam,
+      teams,
       puzzles,
     };
   }

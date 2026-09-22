@@ -453,6 +453,41 @@ function bumpedLine(snapshot: Snapshot) {
  * whole night has been holding back. Vote tallies stay hidden until the
  * result, so nobody piles onto whoever is already ahead mid-vote.
  */
+/**
+ * The one "we" this board offers, next to all the "who"s.
+ *
+ * standings, contenders and seats are every one of them per-player —
+ * survival_standings and its local twin never compute a team figure,
+ * because nothing sealed can safely leave a single player's own tables.
+ * This adds nothing new: an arithmetic mean of numbers this same Board
+ * already prints for each teammate, one line per team instead of one per
+ * person. Only ever shown once `standings` itself is public — the same
+ * gate every individual row already waits behind.
+ */
+function TeamStandings({ snapshot }: { snapshot: Snapshot }) {
+  const { teams, standings, players } = snapshot;
+  if (!teams || teams.length === 0 || !standings) return null;
+  const nameOf = (id: string) => players.find((p) => p.id === id)?.name ?? '—';
+  const averageOf = (id: string) => standings.find((s) => s.playerId === id)?.average ?? 0;
+
+  return (
+    <div className="team-standings">
+      <p className="eyebrow">By team</p>
+      {teams.map((team, i) => {
+        const avg = team.memberIds.reduce((sum, id) => sum + averageOf(id), 0) / team.memberIds.length;
+        return (
+          <div key={team.id} className="team-standing-row">
+            <span style={{ minWidth: 0 }}>
+              Team {i + 1}: {team.memberIds.map(nameOf).join(', ')}
+            </span>
+            <span className="rate">{Math.round(avg * 10) / 10}%</span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function Board({ snapshot }: { snapshot: Snapshot }) {
   const { standings, pleas, players, votes, game, ruthless } = snapshot;
   const pleaOf = (id: string) => pleas.find((p) => p.playerId === id)?.text;
@@ -464,8 +499,10 @@ function Board({ snapshot }: { snapshot: Snapshot }) {
   }));
 
   return (
-    <div className="board">
-      {rows.map((row, i) => {
+    <>
+      <TeamStandings snapshot={snapshot} />
+      <div className="board">
+        {rows.map((row, i) => {
         const tally = votes.filter((v) => v.targetPlayerId === row.playerId).length;
         const marks = marksOfPlayer(row.playerId);
         const seat = seatOf(row.playerId);
@@ -495,6 +532,7 @@ function Board({ snapshot }: { snapshot: Snapshot }) {
         );
       })}
     </div>
+    </>
   );
 }
 
@@ -1182,6 +1220,30 @@ function useMinuteClock(): number {
   return now;
 }
 
+/**
+ * Every team in the room, host-only — a player already sees their own team
+ * via `TeamBanner`, but nobody could previously see the whole roster at
+ * once, which a host running the night genuinely needs (who's on whose
+ * team when reading out the debrief, who to nudge if a team's gone quiet).
+ * Team membership was never a secret; this just shows what was already
+ * public to whoever actually needs the full picture.
+ */
+function TeamRoster({ snapshot }: { snapshot: Snapshot }) {
+  const { teams, players } = snapshot;
+  if (!teams || teams.length === 0) return null;
+  const nameOf = (id: string) => players.find((p) => p.id === id)?.name ?? '—';
+  return (
+    <div className="team-roster">
+      <p className="eyebrow">Teams</p>
+      {teams.map((team, i) => (
+        <p key={team.id} className="muted" style={{ fontSize: '0.8rem' }}>
+          <strong>Team {i + 1}:</strong> {team.memberIds.map(nameOf).join(', ')}
+        </p>
+      ))}
+    </div>
+  );
+}
+
 function Console({ survival, snapshot }: { survival: Survival; snapshot: Snapshot }) {
   const { game, players, answeredPlayerIds } = snapshot;
   const waiting = game.phase === 'running' && !game.revealed;
@@ -1206,6 +1268,7 @@ function Console({ survival, snapshot }: { survival: Survival; snapshot: Snapsho
           {pacing.state === 'behind' ? ' — running long' : pacing.state === 'ahead' ? ' — ahead of pace' : ''}
         </p>
       )}
+      <TeamRoster snapshot={snapshot} />
       {game.phase === 'lobby' && (
         <div className="row">
           <button
