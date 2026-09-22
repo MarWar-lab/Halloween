@@ -42,9 +42,9 @@ export interface Question {
   /**
    * A public asset path, e.g. '/clips/checkpoint.mp4'. A video is not a
    * secret, so — unlike everything in sealed.ts — this lives right here next
-   * to the question it belongs to. Only four of nine questions have one:
-   * forcing a mismatched clip onto a question with no matching footage would
-   * be worse than showing nothing.
+   * to the question it belongs to. Optional because the two warm-ups carry
+   * none; every real question does, and `scripts/check-bundle.mjs` fails the
+   * build if one ever resolves to a missing file.
    */
   clip?: string;
   /**
