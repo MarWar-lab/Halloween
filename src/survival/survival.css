@@ -286,6 +286,9 @@
 @media (prefers-reduced-motion: reduce) {
   .survival .pulse { animation: none; opacity: 1; }
   .survival .reveal-row { animation: none !important; opacity: 1 !important; }
+  .survival .reveal-row .takers { animation: none !important; opacity: 1 !important; }
+  .survival .board-row { animation: none !important; opacity: 1 !important; }
+  .survival .board-row.bumped .who { animation: none !important; opacity: 0.55 !important; color: var(--phosphor) !important; }
 }
 
 /* The host's controls, on their own phone, kept away from the play area. */
@@ -431,7 +434,11 @@
 
 .survival .reveal-row .letter { color: var(--phosphor); font-weight: 700; font-size: 1.1rem; }
 .survival .reveal-row .outcome { color: var(--bone-dim); }
-.survival .reveal-row .takers { color: var(--amber); }
+.survival .reveal-row .takers {
+  color: var(--amber);
+  display: inline-block;
+  animation: survival-rise 0.35s ease both;
+}
 
 @keyframes survival-rise {
   from { opacity: 0; transform: translateY(0.4rem); }
@@ -460,6 +467,14 @@
 
 .survival .board { display: grid; gap: 0.4rem; }
 
+/*
+ * The tribunal and the result screen both render this list — the two
+ * moments a player's own figure sits next to everyone else's for the first
+ * time all night. It used to just appear, fully formed, the instant the
+ * phase changed; it now assembles one row at a time, same stagger the
+ * reveal list already uses, so watching it fill in IS the reveal rather
+ * than a fact the room reads off a table.
+ */
 .survival .board-row {
   display: grid;
   grid-template-columns: 1fr auto;
@@ -470,6 +485,7 @@
   border-radius: 0.4rem;
   background: var(--ink-raised);
   font-size: 0.95rem;
+  animation: survival-rise 0.4s ease both;
 }
 
 .survival .board-row .rank { color: var(--bone-dim); font-variant-numeric: tabular-nums; }
@@ -782,9 +798,24 @@
 
 .survival .board-row .marks { color: var(--alarm); }
 
-/* A seat this player earned and was refused. The reason stays legible; only
-   the name is struck through. */
-.survival .board-row.bumped .who { text-decoration: line-through; opacity: 0.55; }
+/*
+ * A seat this player earned and was refused. The reason stays legible; only
+ * the name is struck through — and it strikes a beat after the board has
+ * assembled, a flash of alarm settling to dim, so the room watches the
+ * verdict land rather than reading a name that was already struck through
+ * the moment it appeared.
+ */
+.survival .board-row.bumped .who {
+  text-decoration: line-through;
+  animation: bumped-strike 0.9s ease both;
+  animation-delay: 0.6s;
+}
+
+@keyframes bumped-strike {
+  0% { opacity: 1; color: var(--phosphor); }
+  40% { opacity: 1; color: var(--alarm); }
+  100% { opacity: 0.55; color: var(--phosphor); }
+}
 
 .survival .room-bar {
   display: flex;

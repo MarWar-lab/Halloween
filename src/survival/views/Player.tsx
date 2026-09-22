@@ -211,7 +211,14 @@ function Task({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
               <span style={{ minWidth: 0 }}>
                 <strong>{row.label}</strong>
                 <span className="outcome"> — {row.outcome}</span>
-                {row.takers > 0 && <span className="takers"> [{tookIt(row.optionIndex).join(', ')}]</span>}
+                {/* A second, later beat rather than the same one the row itself
+                    arrives on — the option settles first, then whoever chose
+                    it is named against it, which is the actual reveal. */}
+                {row.takers > 0 && (
+                  <span className="takers" style={{ animationDelay: `${i * 0.12 + 0.4}s` }}>
+                    {' '}[{tookIt(row.optionIndex).join(', ')}]
+                  </span>
+                )}
               </span>
             </div>
           ))}
@@ -514,6 +521,7 @@ function Board({ snapshot }: { snapshot: Snapshot }) {
           <div
             key={row.playerId}
             className={`board-row${game.phase === 'result' && marks?.disqualified ? ' bumped' : ''}`}
+            style={{ animationDelay: `${i * 0.08}s` }}
           >
             <span style={{ minWidth: 0 }}>
               <span className="rank">{i + 1}.</span>{' '}
