@@ -28,9 +28,13 @@ everything:
   `Exchange` component, backed by `survival_posts`/`survival_asks` in SQL)
   is the shared ledger fragments move across: posting your own rule is a
   tap, asking for a berth you're missing is a tap, and — the one rule that
-  makes it work — a fragment you keep to yourself still vanishes when the
-  host advances; a fragment you post persists. Whoever actually types the
-  finished code gets a seat; their team does not get seated automatically.
+  makes it work — nobody's own fragment ever narrows the puzzle by itself
+  (`noTeamSolves` in `src/survival/puzzles.ts`), so a berth only opens
+  through people actually trading. A berth stays unlocked for the rest of
+  the night once reached (`unlockedBerths` in `src/survival/net/local.ts`) —
+  fragments don't expire, they just sit useless until published. Whoever
+  actually types the finished code gets a seat; their team does not get
+  seated automatically.
 - **The record.** Best `survivalOddsPrecise` among everyone who didn't
   escape.
 - **The room.** The tribunal's vote, after a 150-character plea.
