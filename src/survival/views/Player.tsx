@@ -26,6 +26,7 @@ import {
   type Question,
 } from '../questions';
 import { buildDebrief } from '../debrief';
+import { pacingFor } from '../pacing';
 import type { Survival } from '../state/useSurvival';
 import { Clip } from './Clip';
 import { clockOf } from '../puzzles';
@@ -1129,10 +1130,29 @@ function Plea({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
  * it — and there is deliberately no way to see anybody's percentage from here.
  * A host who can read the room's numbers is a host who cannot play.
  */
+/**
+ * A minute-resolution clock, local to whatever reads it.
+ *
+ * `pacingFor` is pure and needs `Date.now()` from somewhere; the snapshot
+ * itself has no "current time" field, and re-deriving the pacing line only
+ * when a snapshot arrives would freeze it solid through a long discussion —
+ * exactly the silence the indicator exists to catch a host being unaware of.
+ */
+function useMinuteClock(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 30_000);
+    return () => window.clearInterval(id);
+  }, []);
+  return now;
+}
+
 function Console({ survival, snapshot }: { survival: Survival; snapshot: Snapshot }) {
   const { game, players, answeredPlayerIds } = snapshot;
   const waiting = game.phase === 'running' && !game.revealed;
   const everyone = answeredPlayerIds.length >= players.length;
+  const now = useMinuteClock();
+  const pacing = pacingFor(game, players.length, now);
 
   // An escapee needs neither a plea nor a vote to have "settled" — the code
   // already decided them.
@@ -1145,6 +1165,12 @@ function Console({ survival, snapshot }: { survival: Survival; snapshot: Snapsho
   return (
     <div className="console">
       <p className="eyebrow">Host</p>
+      {game.phase !== 'lobby' && (
+        <p className={`pacing ${pacing.state}`} role="status">
+          {pacing.minutesElapsed} of {pacing.minutesTarget} min
+          {pacing.state === 'behind' ? ' — running long' : pacing.state === 'ahead' ? ' — ahead of pace' : ''}
+        </p>
+      )}
       {game.phase === 'lobby' && (
         <div className="row">
           <button

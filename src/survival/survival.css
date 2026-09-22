@@ -299,6 +299,29 @@
 .survival .console .row { display: flex; gap: 0.5rem; }
 .survival .console .row > * { flex: 1; }
 
+/*
+ * A host who is nagged from minute one stops reading the indicator at all —
+ * see pacing.ts's GRACE_MINUTES — so `on-time` reads as neutral text, and
+ * only the two edges (comfortably ahead, or genuinely late) get a color and
+ * the small left border every other status cue in this file uses. Never
+ * color alone.
+ */
+.survival .pacing {
+  font-size: 0.78rem;
+  color: var(--bone-dim);
+  margin: 0;
+}
+.survival .pacing.behind {
+  color: var(--alarm);
+  border-left: 2px solid var(--alarm);
+  padding-left: 0.5rem;
+}
+.survival .pacing.ahead {
+  color: var(--phosphor-dim);
+  border-left: 2px solid var(--phosphor-dim);
+  padding-left: 0.5rem;
+}
+
 /* ── media and the full reveal ────────────────────────────────────────────── */
 
 /* A normal block above the header. The phone already scrolls

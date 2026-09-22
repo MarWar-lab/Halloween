@@ -142,3 +142,22 @@ it('names a teammate who also stated the code, but not twice', () => {
   // is only named once, in the teammate line above.
   expect(html).not.toContain('Also stated it');
 });
+
+it('shows the host a pacing line once the lobby closes, but not before', () => {
+  // pacing.ts existed, was tested, and was never imported anywhere outside
+  // its own test file — a real indicator on paper, dead code in the app.
+  const briefing = base('briefing');
+  briefing.game.createdAt = new Date().toISOString();
+  const html = render(briefing);
+  expect(html).toMatch(/\d+ of \d+ min/);
+  expect(render(base('lobby'))).not.toMatch(/\d+ of \d+ min/);
+});
+
+it('marks the host behind once the night has genuinely overrun', () => {
+  const late = base('running');
+  late.game.questionIdx = 0;
+  // Ten hours ago is behind at any phase, any room size.
+  late.game.createdAt = new Date(Date.now() - 10 * 60 * 60 * 1000).toISOString();
+  const html = render(late);
+  expect(html).toContain('running long');
+});
