@@ -561,6 +561,47 @@ describe('the extraction code', () => {
     expect(ruthless.disqualified).toBe(false);
   });
 
+  it('never disqualifies anyone once the host has switched the ruthless cutoff off', async () => {
+    // The toggle is lobby-only, so it must be set before this describe
+    // block's beforeEach ever advances past the lobby — undo that here by
+    // rebuilding the game fresh rather than mutating the shared fixture.
+    installBrowser();
+    const fresh = new LocalSurvivalBackend();
+    tab('hana');
+    const made = await fresh.create('Hana');
+    tab('cara');
+    await fresh.join(made.code, 'Cara');
+    tab('hana');
+    await fresh.setMode(made.gameId, 'solo');
+    await fresh.setRuthlessEnabled(made.gameId, false);
+    await fresh.advance(made.gameId); // briefing
+    await fresh.advance(made.gameId); // running — first warm-up
+    await skipWarmups(fresh, made.gameId);
+
+    const snap = seenBy(fresh, 'hana', made.gameId);
+    const hana = idOf(snap, 'Hana');
+    const doc = JSON.parse(localStorage.getItem(`survival:game:${made.gameId}`)!);
+    doc.answers = doc.answers.filter((a: { playerId: string }) => a.playerId !== hana);
+    for (const q of [0, 1, 2, 3, 4]) {
+      doc.answers.push({ playerId: hana, questionIdx: q, optionIndex: DARK_CHOICES[q][0], autoAssigned: false });
+    }
+    localStorage.setItem(`survival:game:${made.gameId}`, JSON.stringify(doc));
+
+    tab('hana');
+    await playOut(fresh, made.gameId);
+    await fresh.advance(made.gameId); // → plea
+    await fresh.advance(made.gameId); // → tribunal
+    await fresh.advance(made.gameId); // → result
+
+    const final = seenBy(fresh, 'hana', made.gameId);
+    const hanaRow = final.ruthless!.find((r) => r.playerId === hana)!;
+    // Five dark marks — the same tally that disqualifies elsewhere in this
+    // file — but the cutoff itself is off, so the count still shows and the
+    // seat is not refused for it.
+    expect(hanaRow.marks).toBeGreaterThanOrEqual(5);
+    expect(hanaRow.disqualified).toBe(false);
+  });
+
   it('refuses a vote for someone already aboard', async () => {
     const real = docOf(gameId).keyCode;
     tab('cara');
@@ -813,6 +854,25 @@ describe('consensus mode', () => {
     tab('hana');
     await backend.advance(made.gameId); // briefing — past the lobby now
     await expect(backend.setMode(made.gameId, 'consensus')).rejects.toThrow();
+  });
+
+  it('setRuthlessEnabled is host-only and lobby-only, and defaults to on', async () => {
+    installBrowser();
+    const backend = new LocalSurvivalBackend();
+    tab('hana');
+    const made = await backend.create('Hana');
+    expect(seenBy(backend, 'hana', made.gameId).game.ruthlessEnabled).toBe(true);
+
+    tab('cara');
+    await backend.join(made.code, 'Cara');
+    await expect(backend.setRuthlessEnabled(made.gameId, false)).rejects.toThrow();
+
+    tab('hana');
+    await backend.setRuthlessEnabled(made.gameId, false);
+    expect(seenBy(backend, 'hana', made.gameId).game.ruthlessEnabled).toBe(false);
+
+    await backend.advance(made.gameId); // briefing — past the lobby now
+    await expect(backend.setRuthlessEnabled(made.gameId, true)).rejects.toThrow();
   });
 
   it("splits a clued round's digit between teammates — one seer, one 'ask them' instead", async () => {

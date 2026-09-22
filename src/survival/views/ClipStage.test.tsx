@@ -6,7 +6,7 @@ import type { Snapshot } from '../types';
 
 const base = (over: Partial<Snapshot['game']> = {}): Snapshot['game'] => ({
   id: 'game', code: 'TEST', hostUserId: 'host', phase: 'running',
-  questionIdx: 0, revealed: false, createdAt: '', mode: 'solo', ...over,
+  questionIdx: 0, revealed: false, createdAt: '', mode: 'solo', ruthlessEnabled: true, ...over,
 });
 
 const snap = (game: Snapshot['game'], answers: Snapshot['answers'] = []): Snapshot => ({

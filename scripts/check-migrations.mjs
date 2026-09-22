@@ -934,6 +934,75 @@ check('no survival table is writable by authenticated at all',
   tableGrants.filter((g) => ['INSERT', 'UPDATE', 'DELETE'].includes(g.privilege_type))
     .map((g) => `${g.table_name}:${g.privilege_type}`).join(', '));
 
+console.log('\n=== the ruthless cutoff is a lobby-only, host-only switch ===');
+
+const RHOST = 'a1a1a1a1-a1a1-a1a1-a1a1-a1a1a1a1a1a1';
+const RCARA = 'b2b2b2b2-b2b2-b2b2-b2b2-b2b2b2b2b2b2';
+
+await be(RHOST);
+const rgame = (await db.query(`select * from survival_create('R-Host')`)).rows[0];
+await be(RCARA);
+const rCara = (await db.query(`select * from survival_join($1,'R-Cara')`, [rgame.code])).rows[0];
+
+check('ruthless_enabled defaults to true, same as the mechanic always has been',
+  (await db.query(`select ruthless_enabled from survival_games where id=$1`, [rgame.id])).rows[0].ruthless_enabled === true);
+
+check('only the host may switch it',
+  !!(await refuses(`select survival_set_ruthless_enabled($1,false)`, [rgame.id])));
+
+await be(RHOST);
+// Solo, to keep this section about one player's own marks rather than a
+// team's shared ones — the toggle itself does not care which mode is on.
+await db.query(`select survival_set_mode($1,'solo')`, [rgame.id]);
+await db.query(`select survival_set_ruthless_enabled($1,false)`, [rgame.id]);
+check('the toggle took',
+  (await db.query(`select ruthless_enabled from survival_games where id=$1`, [rgame.id])).rows[0].ruthless_enabled === false);
+
+await db.query(`select survival_advance($1)`, [rgame.id]); // briefing
+check('too late to change the cutoff once the briefing has started',
+  !!(await refuses(`select survival_set_ruthless_enabled($1,true)`, [rgame.id])));
+
+await db.query(`select survival_advance($1)`, [rgame.id]); // running — first warm-up
+for (let i = 0; i < 2; i += 1) {
+  await db.query(`select survival_reveal($1)`, [rgame.id]);
+  await db.query(`select survival_advance($1)`, [rgame.id]);
+} // → question 0
+
+// Cara picks five dark options directly — the same shortcut the
+// ruthlessness-trap section above takes, and the same rows it already
+// marked dark, so this reuses rather than redefines what "dark" means here.
+await db.exec('reset role;');
+await db.query(`update survival_options set ruthless = true where question_idx = 0 and option_index = 1`);
+await db.query(
+  `insert into survival_answers (game_id, player_id, question_idx, option_index, auto_assigned)
+   values ($1,$2,0,1,false)
+   on conflict (game_id, player_id, question_idx) do update set option_index = 1, auto_assigned = false`,
+  [rgame.id, rCara.id]);
+await db.query(`update survival_options set ruthless = true where question_idx in (1,2,3,4) and option_index = 0`);
+for (const q of [1, 2, 3, 4]) {
+  await db.query(
+    `insert into survival_answers (game_id, player_id, question_idx, option_index, auto_assigned)
+     values ($1,$2,$3,0,false)
+     on conflict (game_id, player_id, question_idx) do update set option_index = 0, auto_assigned = false`,
+    [rgame.id, rCara.id, q]);
+}
+
+await be(RHOST);
+for (let q = 0; q <= 8; q += 1) {
+  await db.query(`select survival_reveal($1)`, [rgame.id]);
+  if (q < 8) await db.query(`select survival_advance($1)`, [rgame.id]);
+}
+await db.query(`select survival_advance($1)`, [rgame.id]); // → plea
+await db.query(`select survival_advance($1)`, [rgame.id]); // → tribunal
+await db.query(`select survival_advance($1)`, [rgame.id]); // → result
+
+const rRuthless = (await db.query(`select * from survival_ruthless($1)`, [rgame.id])).rows;
+const rCaraRow = rRuthless.find((r) => r.player_id === rCara.id);
+check('the real tally still shows — turning the cutoff off never hides a mark',
+  rCaraRow?.marks >= 5, rCaraRow?.marks);
+check('but with the cutoff off, that tally costs nobody a seat',
+  rCaraRow?.disqualified === false);
+
 console.log('\n=== consensus mode: teams draw once, and a tap fans out to the whole team ===');
 
 const THOST = '50505050-5050-5050-5050-505050505050';

@@ -48,6 +48,14 @@ export interface Game {
    * lobby-only; see `Snapshot.myTeam`.
    */
   mode: 'solo' | 'consensus';
+  /**
+   * Whether five dark picks still cost a seat. Defaults to true — the
+   * mechanic is built and this is not a redesign, only a facilitator's
+   * escape hatch for a room they know can't carry it. Host-set, lobby-only,
+   * same gate as `mode`: switching it mid-game would change what a round
+   * already played for.
+   */
+  ruthlessEnabled: boolean;
 }
 
 export interface Player {

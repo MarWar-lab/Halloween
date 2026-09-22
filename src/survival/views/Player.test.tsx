@@ -5,7 +5,10 @@ import type { Snapshot } from '../types';
 import type { Survival } from '../state/useSurvival';
 
 const base = (phase: Snapshot['game']['phase']): Snapshot => ({
-  game: { id: 'game', code: 'TEST', hostUserId: 'host', phase, questionIdx: 6, revealed: true, createdAt: '', mode: 'solo' },
+  game: {
+    id: 'game', code: 'TEST', hostUserId: 'host', phase, questionIdx: 6, revealed: true, createdAt: '',
+    mode: 'solo', ruthlessEnabled: true,
+  },
   players: ['Hana', 'Cara'].map((name) => ({ id: name, name, gameId: 'game', userId: name, lastSeen: '' })),
   answers: [], myScores: [{ questionIdx: 0, survivalPct: 65 }], pleas: [], votes: [],
   answeredPlayerIds: [], pleadedPlayerIds: ['Hana'], votedPlayerIds: ['Hana'],

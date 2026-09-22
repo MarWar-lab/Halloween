@@ -36,6 +36,12 @@ export interface SurvivalBackend {
    * either strand a team mid-round or silently reshuffle one.
    */
   setMode(gameId: string, mode: 'solo' | 'consensus'): Promise<void>;
+  /**
+   * Switch the ruthless cutoff on or off. Lobby-only, for the same reason as
+   * `setMode`: changing it once marks have already been counted would make
+   * a round's cost retroactive.
+   */
+  setRuthlessEnabled(gameId: string, enabled: boolean): Promise<void>;
 
   // ── players ────────────────────────────────────────────────────────────
   answer(gameId: string, optionIndex: number): Promise<void>;

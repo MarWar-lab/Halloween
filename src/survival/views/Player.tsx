@@ -1281,6 +1281,12 @@ function Console({ survival, snapshot }: { survival: Survival; snapshot: Snapsho
           >
             {game.mode === 'consensus' ? 'Playing in teams — tap for solo' : 'Playing solo — tap for teams'}
           </button>
+          <button
+            onClick={() => void survival.setRuthlessEnabled(!game.ruthlessEnabled)}
+            disabled={survival.busy}
+          >
+            {game.ruthlessEnabled ? 'Ruthless cutoff on — tap to turn off' : 'Ruthless cutoff off — tap to turn on'}
+          </button>
         </div>
       )}
       {(game.phase === 'plea' || game.phase === 'tribunal') && (

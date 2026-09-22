@@ -336,6 +336,7 @@ export class LocalSurvivalBackend implements SurvivalBackend {
         revealed: false,
         createdAt: now,
         mode: 'consensus',
+        ruthlessEnabled: true,
       },
       players: [
         { id: playerId, gameId, userId: 'local-host', name: name.slice(0, 12), lastSeen: now },
@@ -479,6 +480,15 @@ export class LocalSurvivalBackend implements SurvivalBackend {
     if (!this.isHost(gameId)) throw new SurvivalError('Host only.', 'not_host');
     if (doc.game.phase !== 'lobby') throw new SurvivalError('Too late to change the mode now.');
     doc.game.mode = mode;
+    writeDoc(doc);
+    this.announce(gameId);
+  }
+
+  async setRuthlessEnabled(gameId: string, enabled: boolean) {
+    const doc = this.mustRead(gameId);
+    if (!this.isHost(gameId)) throw new SurvivalError('Host only.', 'not_host');
+    if (doc.game.phase !== 'lobby') throw new SurvivalError('Too late to change that now.');
+    doc.game.ruthlessEnabled = enabled;
     writeDoc(doc);
     this.announce(gameId);
   }
@@ -914,7 +924,7 @@ function snapshotFor(doc: Doc, me: string | null): Snapshot {
       average: survivalOddsOf(mine) ?? 0,
       solveOrder: escape ? escape.solveOrder : null,
       marks,
-      disqualified: marks >= RUTHLESS_LIMIT,
+      disqualified: game.ruthlessEnabled && marks >= RUTHLESS_LIMIT,
     };
   });
 

@@ -53,6 +53,7 @@ export interface Survival {
   reveal: () => Promise<void>;
   advance: () => Promise<void>;
   setMode: (mode: 'solo' | 'consensus') => Promise<void>;
+  setRuthlessEnabled: (enabled: boolean) => Promise<void>;
   answer: (optionIndex: number) => Promise<void>;
   plea: (text: string) => Promise<void>;
   vote: (targetPlayerId: string) => Promise<void>;
@@ -243,6 +244,7 @@ export function useSurvival(): Survival {
     reveal: act((id) => backend.reveal(id)),
     advance: act((id) => backend.advance(id)),
     setMode: (mode: 'solo' | 'consensus') => act((id) => backend.setMode(id, mode))(),
+    setRuthlessEnabled: (enabled: boolean) => act((id) => backend.setRuthlessEnabled(id, enabled))(),
     answer: (optionIndex: number) => act((id) => backend.answer(id, optionIndex))(),
     plea: (text: string) => act((id) => backend.plea(id, text))(),
     vote: (target: string) => act((id) => backend.vote(id, target))(),

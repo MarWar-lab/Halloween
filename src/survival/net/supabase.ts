@@ -40,6 +40,7 @@ interface GameRow {
   revealed: boolean;
   created_at: string;
   mode: 'solo' | 'consensus';
+  ruthless_enabled: boolean;
 }
 
 const rowToGame = (r: GameRow): Game => ({
@@ -51,6 +52,7 @@ const rowToGame = (r: GameRow): Game => ({
   revealed: r.revealed,
   createdAt: r.created_at,
   mode: r.mode,
+  ruthlessEnabled: r.ruthless_enabled,
 });
 
 const rowToPlayer = (r: {
@@ -475,6 +477,13 @@ export class SupabaseSurvivalBackend implements SurvivalBackend {
 
   setMode = (gameId: string, mode: 'solo' | 'consensus') =>
     this.call('survival_set_mode', { p_game: gameId, p_mode: mode }, 'Could not change how the room plays.');
+
+  setRuthlessEnabled = (gameId: string, enabled: boolean) =>
+    this.call(
+      'survival_set_ruthless_enabled',
+      { p_game: gameId, p_enabled: enabled },
+      'Could not change the ruthless cutoff.',
+    );
 
   answer = (gameId: string, optionIndex: number) =>
     this.call('survival_answer', { p_game: gameId, p_option: optionIndex },
