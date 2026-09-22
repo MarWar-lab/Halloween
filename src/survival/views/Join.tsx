@@ -9,6 +9,7 @@
 import { useState } from 'react';
 import type { Survival } from '../state/useSurvival';
 import { OPENING } from '../questions';
+import { Narration } from './Narration';
 
 export function Join({ survival }: { survival: Survival }) {
   const [mode, setMode] = useState<'join' | 'create'>('join');
@@ -30,9 +31,7 @@ export function Join({ survival }: { survival: Survival }) {
         <h1>The Last Screen Standing</h1>
       </div>
 
-      <p className="muted" style={{ lineHeight: 1.5, fontSize: '0.9rem', margin: 0 }}>
-        {OPENING}
-      </p>
+      <Narration text={OPENING} className="muted" />
 
       {survival.error && <p className="error" role="alert">{survival.error}</p>}
 

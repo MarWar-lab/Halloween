@@ -351,6 +351,39 @@
 }
 
 /*
+ * The narrator this game doesn't have. Every line is already in the DOM —
+ * this is purely how it arrives on screen, one beat after the last, so a
+ * paragraph reads as being told to you rather than dropped on you in one
+ * frame. `prefers-reduced-motion` removes the stagger and nothing else: the
+ * text itself never depends on the animation to be there.
+ */
+.survival .narration {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+/*
+ * Deliberately no font-size, line-height or color here. `<Narration>` always
+ * carries a second class from its caller (.setup, .muted, …), landing on
+ * this same element — and font-size, line-height and color are inherited
+ * properties, so the line below only needs to not override them. A caller
+ * passing .muted keeps reading dim and small; one passing .setup keeps
+ * reading full-weight — the same way a plain <p className="…"> always did.
+ */
+.survival .narration .narration-line {
+  margin: 0;
+  opacity: 0;
+  animation: narration-in 0.6s ease forwards;
+}
+@keyframes narration-in {
+  from { opacity: 0; transform: translateY(0.35em); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .survival .narration .narration-line { animation: none !important; opacity: 1 !important; }
+}
+
+/*
  * The full reveal: every outcome, every device, at once. Unlike the choosing
  * grid these are read-only rows in a scrolling column — the phone was never
  * the surface with a "nothing may scroll" constraint, only the shared screen

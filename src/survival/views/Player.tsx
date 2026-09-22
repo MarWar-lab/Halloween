@@ -29,6 +29,7 @@ import { buildDebrief } from '../debrief';
 import { pacingFor } from '../pacing';
 import type { Survival } from '../state/useSurvival';
 import { Clip } from './Clip';
+import { Narration } from './Narration';
 import { clockOf } from '../puzzles';
 import { DigitRain } from '../scene/DigitRain';
 import { Terminal } from '../scene/Terminal';
@@ -87,8 +88,8 @@ function Task({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
           <p className="eyebrow">Emergency broadcast</p>
           <h2>The world ends on a Tuesday</h2>
         </header>
-        <p className="setup">{OPENING}</p>
-        <p className="setup">{EXTRACTION_BRIEF}</p>
+        <Narration text={OPENING} className="setup" />
+        <Narration text={EXTRACTION_BRIEF} className="setup" />
         <TeamBanner snapshot={snapshot} me={me} />
         <Notepad gameId={game.id} me={me} />
       </>
@@ -108,7 +109,13 @@ function Task({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
             <p className="eyebrow">{questionLabel(game.questionIdx)}</p>
             <h2>{question.title}</h2>
           </header>
-          <p className="setup">{question.setup}</p>
+          {/* Prefixed, not bare `questionIdx`: `ManifestLine` right below already
+              keys on the bare index, and two siblings sharing a key value is a
+              real bug, not a lint nit — React's reconciliation attaches to the
+              wrong instance, and a phone-in-hand test caught it as OLD warm-up
+              narration text bleeding into the next real question's screen. Any
+              third sibling keyed on this index needs its own prefix too. */}
+          <Narration key={`setup-${game.questionIdx}`} text={question.setup} className="setup" />
           <TeamBanner snapshot={snapshot} me={me} />
           <ManifestLine key={game.questionIdx} question={question} snapshot={snapshot} questionIdx={game.questionIdx} />
           <div className="moves">
@@ -1107,7 +1114,7 @@ function Plea({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
         <p className="eyebrow">The chopper is leaving</p>
         <h2>Why should we take YOU?</h2>
       </header>
-      <p className="setup">{FINAL_PLEA.setup}</p>
+      <Narration text={FINAL_PLEA.setup} className="setup" />
       <textarea
         rows={4}
         value={text}
