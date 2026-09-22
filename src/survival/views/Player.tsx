@@ -65,7 +65,7 @@ function Task({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
       <div className="locked">
         <p className="muted">Join at <strong>{window.location.host}/survive</strong>, then enter the code:</p>
         <p className="code-badge">{game.code}</p>
-        <p className="muted" style={{ fontSize: '0.9rem' }}>
+        <p className="muted text-xl">
           Start when everyone is actually here — anyone who joins later is marked down
           for every question they missed.
         </p>
@@ -75,7 +75,7 @@ function Task({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
           ))}
         </div>
         {game.mode === 'consensus' && (
-          <p className="muted" style={{ fontSize: '0.85rem' }}>
+          <p className="muted text-lg">
             Playing in teams tonight — you&rsquo;ll be paired up once the briefing starts, and
             any teammate&rsquo;s tap locks the choice in for both of you.
           </p>
@@ -133,7 +133,7 @@ function Task({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
               </button>
             ))}
           </div>
-          <p className="muted" style={{ fontSize: '0.8rem' }}>
+          <p className="muted text-md">
             {snapshot.myTeam && snapshot.myTeam.length > 1
               ? 'Any one of you can lock this in for the whole team. Talk fast.'
               : 'One tap, and it is locked. Choose carefully.'}
@@ -157,7 +157,7 @@ function Task({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
             <span className="sr-only">{onATeam ? 'Your team chose' : 'You chose'}</span>
             <span className="locked-choice-text">{question.choices[mine.optionIndex]}</span>
           </div>
-          <p className="muted" style={{ fontSize: '0.85rem' }}>
+          <p className="muted text-lg">
             {onATeam
               ? 'Locked in by whoever on your team tapped first.'
               : isWarmup ? 'Waiting on the room.' : 'Calculating survival probability.'}
@@ -415,7 +415,7 @@ function contestedLine(snapshot: Snapshot) {
       ? 'came through the night on identical odds, with nothing left to separate them'
       : 'tied for the last seat, all the way down, with nothing left to break it';
   return (
-    <p className="talk" style={{ borderColor: 'var(--amber)' }}>
+    <p className="talk">
       {joinNames(contested.map((s) => s.name))} {cause}. Seat {contested[0].seat} is shared,
       not decided.
     </p>
@@ -441,7 +441,7 @@ function bumpedLine(snapshot: Snapshot) {
   const refused = snapshot.escapedPlayerIds.filter((id) => disqualified.has(id) && !seated.has(id));
   if (refused.length === 0) return null;
   return (
-    <p className="talk" style={{ borderColor: 'var(--alarm)' }}>
+    <p className="talk talk-alarm">
       Vicious, vengeful, and very nearly victorious — {refused.map(nameOf).join(', ')} cracked
       the code, and the port voided the seat anyway. {RUTHLESS_LIMIT} or more marks is more than
       it will carry.
@@ -553,7 +553,7 @@ function TeamBanner({ snapshot, me }: { snapshot: Snapshot; me: string }) {
     .map((id) => snapshot.players.find((p) => p.id === id)?.name)
     .filter(Boolean);
   return (
-    <p className="muted" style={{ fontSize: '0.85rem' }}>
+    <p className="muted text-lg">
       Your team: you and {names.join(', ')}.
     </p>
   );
@@ -608,7 +608,7 @@ function MyNumbers({
       <span className={marksClass}>
         Marks against your name: <strong>{marks}</strong> of {RUTHLESS_LIMIT}
       </span>
-      <span className="muted" style={{ fontSize: '0.75rem' }}>
+      <span className="muted text-sm">
         Nobody else can see this. Keep it that way.
       </span>
     </div>
@@ -863,7 +863,7 @@ function Notepad({ gameId, me }: { gameId: string; me: string }) {
         }}
         placeholder="Whatever you need to remember."
       />
-      <p className="muted" style={{ fontSize: '0.7rem' }}>Never leaves this phone.</p>
+      <p className="muted text-xs">Never leaves this phone.</p>
     </details>
   );
 }
@@ -1021,11 +1021,11 @@ function Keypad({
         <p className="eyebrow">The extraction port</p>
         <h2>{EXTRACTION.prompt}</h2>
       </header>
-      <p className="muted" style={{ fontSize: '0.85rem' }}>
+      <p className="muted text-lg">
         Four green seals, read from the last berth back to the first.
       </p>
       {onATeam && (
-        <p className="muted" style={{ fontSize: '0.8rem' }}>
+        <p className="muted text-md">
           One keypad, one cooldown, shared by the whole team — but the seat goes to whoever
           actually states it. Solve it together; only the one who types it walks through the door.
         </p>
@@ -1058,13 +1058,13 @@ function Keypad({
         {cooling ? `Wait ${secondsLeft}s` : 'Try the code'}
       </button>
       {onATeam && wrongCount > 0 && (
-        <p className="muted" style={{ fontSize: '0.75rem' }}>
+        <p className="muted text-sm">
           Your team has tried {wrongCount} {wrongCount === 1 ? 'time' : 'times'} — that cooldown is shared too.
         </p>
       )}
       {snapshot.escapedPlayerIds.length > 0 && (
         <div>
-          <p className="muted" style={{ fontSize: '0.8rem' }}>Already aboard:</p>
+          <p className="muted text-md">Already aboard:</p>
           <div className="roster">
             {snapshot.escapedPlayerIds.map((id) => (
               <span key={id} className="seat aboard">
@@ -1132,7 +1132,7 @@ function Aboard({ snapshot, me }: { snapshot: Snapshot; me: string }) {
         </p>
       )}
       {others.length > 0 && <p className="muted">Also stated it: {others.join(', ')}</p>}
-      <p className="muted" style={{ fontSize: '0.8rem' }}>
+      <p className="muted text-md">
         The port has your name. It also has your record.
       </p>
     </div>
@@ -1188,7 +1188,7 @@ function Plea({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
         placeholder="One sentence."
         aria-label="Your plea to the pilot"
       />
-      <p className="muted" style={{ fontSize: '0.8rem' }}>{left} characters left</p>
+      <p className="muted text-md">{left} characters left</p>
       <button
         className="primary"
         disabled={text.trim().length === 0 || survival.busy}
@@ -1240,7 +1240,7 @@ function TeamRoster({ snapshot }: { snapshot: Snapshot }) {
     <div className="team-roster">
       <p className="eyebrow">Teams</p>
       {teams.map((team, i) => (
-        <p key={team.id} className="muted" style={{ fontSize: '0.8rem' }}>
+        <p key={team.id} className="muted text-md">
           <strong>Team {i + 1}:</strong> {team.memberIds.map(nameOf).join(', ')}
         </p>
       ))}
@@ -1296,7 +1296,7 @@ function Console({ survival, snapshot }: { survival: Survival; snapshot: Snapsho
         </p>
       )}
       {waiting && (
-        <p className="muted" style={{ fontSize: '0.85rem' }}>
+        <p className="muted text-lg">
           {answeredPlayerIds.length} of {players.length} have chosen.
           {!everyone && game.questionIdx >= 0 && ' Opening now gives the rest the worst move.'}
         </p>

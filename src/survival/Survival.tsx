@@ -16,6 +16,7 @@ import { useSurvival } from './state/useSurvival';
 import { isLocalPlay } from './net';
 import { BunkerMap } from './scene/BunkerMap';
 import { computeTension, tensionInputFromSnapshot } from './tension';
+import { actFor } from './arc';
 import './survival.css';
 
 export default function Survival() {
@@ -27,6 +28,11 @@ export default function Survival() {
     [snapshot],
   );
 
+  const act = snapshot ? actFor(snapshot.game.phase, snapshot.game.questionIdx) : 1;
+  // Keyed on the same beat ClipStage and Narration already remount for, so
+  // the flash and the new content it's cutting to land on the same tick.
+  const beatKey = snapshot ? `${snapshot.game.phase}-${snapshot.game.questionIdx}` : 'door';
+
   // index.html carries the other game's title, and a room code read off a
   // browser tab is one of the ways people find their way back in.
   useEffect(() => {
@@ -36,8 +42,9 @@ export default function Survival() {
   }, [session?.code]);
 
   return (
-    <div className="survival">
+    <div className="survival" data-act={act}>
       {snapshot && <BunkerMap playerCount={snapshot.players.length} tension={tension} />}
+      {snapshot && <div key={beatKey} className="signal-cut" aria-hidden="true" />}
       {session && survival.error && <p className="error" role="alert">{survival.error}</p>}
       {!session ? (
         <Join survival={survival} />

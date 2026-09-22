@@ -446,6 +446,17 @@
   font-size: 0.95rem;
   text-align: center;
 }
+.survival .talk.talk-alarm { border-color: var(--alarm); }
+
+/* A small type scale — five names instead of the same five numbers repeated
+   as inline styles across Player.tsx. All five sit under 1rem on purpose:
+   this is for text that's already secondary (`.muted`), just secondary at a
+   few different distances from the main line. */
+.survival .text-xs { font-size: 0.7rem; }
+.survival .text-sm { font-size: 0.75rem; }
+.survival .text-md { font-size: 0.8rem; }
+.survival .text-lg { font-size: 0.85rem; }
+.survival .text-xl { font-size: 0.9rem; }
 
 .survival .board { display: grid; gap: 0.4rem; }
 
@@ -882,3 +893,64 @@
 /* The scattered inline font-size overrides this replaces were all saying
    the same thing in four slightly different sizes. */
 .survival .fine { font-size: 0.78rem; color: var(--bone-dim); margin: 0; }
+
+/* ── the arc: the night gets colder, and the room should feel it ────────── */
+
+/*
+ * `data-act` on the root element, derived from how far into the night the
+ * room is (see ../arc.ts) — 1 through the first three real questions, 2
+ * through the middle three, 3 from there through the result. Nothing here
+ * ever reads as a new color scheme; it's the same palette pulled a little
+ * further from center each act, so question 1 and question 9 don't look
+ * like the same screen.
+ */
+.survival { --creep: 0; }
+.survival[data-act="2"] { --creep: 0.5; }
+.survival[data-act="3"] { --creep: 1; }
+
+.survival::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse at 50% 40%,
+    transparent 50%,
+    color-mix(in srgb, var(--alarm) calc(var(--creep) * 16%), transparent) 140%
+  );
+  transition: background 2s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .survival::after { transition: none; }
+}
+
+/* ── the signal cut: a beat change is an event, not a silent DOM swap ───── */
+
+/*
+ * Remounted (via `key`) every time the phase or question changes — see
+ * Survival.tsx. A stuttery flash rather than a smooth fade, on purpose: the
+ * rest of this file's motion is deliberately smooth (narration, the reveal
+ * stagger), so the one moment that should read as a CUT needs a different
+ * texture, not just a faster version of the same easing.
+ */
+.survival .signal-cut {
+  position: fixed;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+  background: var(--bone);
+  animation: signal-cut 0.5s steps(2, end) forwards;
+}
+
+@keyframes signal-cut {
+  0% { opacity: 0.16; }
+  40% { opacity: 0; }
+  55% { opacity: 0.08; }
+  100% { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .survival .signal-cut { display: none; }
+}
