@@ -241,10 +241,12 @@ check("the Pass actually closes the card", closed and closed["phase"] == "scored
 
 # ── The Last Screen Standing ────────────────────────────────────────────────
 #
-# A separate game on separate tables, and one question decides whether it
-# works at all: can a player learn a percentage that is not theirs? These are
-# the only assertions that prove the answer on the real project — PGlite
-# proves the SQL is correct, this proves the live database is in that state.
+# A separate game on separate tables, and the question that decides whether
+# it works at all: can a player learn something that is not theirs — a
+# percentage, an extraction code, a puzzle answer, or another player's
+# fragment? These are the only assertions that prove the answer on the real
+# project — PGlite proves the SQL is correct, this proves the live database
+# is actually in that state.
 
 print("\n=== The Last Screen Standing: the seal, live ===")
 
@@ -407,6 +409,45 @@ attempts_a = call("GET", f"/rest/v1/survival_attempts?game_id=eq.{s_id}&select=i
 a_ids = {r["id"] for r in (attempts_a or [])}
 check("one player's attempts are invisible to another", a_ids.isdisjoint(b_ids),
       f"a saw {len(a_ids)}, b saw {len(b_ids)}, overlap {a_ids & b_ids}")
+
+# ── the berth puzzles: the same two shut gates, and the fragment asymmetry ──
+#
+# survival_berth_answers is sealed exactly like survival_options and
+# survival_keys — no grant, no policy. survival_fragments is different on
+# purpose: a player IS allowed to read a row from that table, but only the
+# one that is theirs. That asymmetry is the whole mechanic (a fragment you
+# keep helps nobody; a fragment you post is a choice), so it is checked here
+# the same way `survival_attempts` above proves one player's rows are
+# invisible to another — this game already dealt fragments for every green
+# berth back at the briefing, solo mode included.
+
+answers_leak = call("GET", f"/rest/v1/survival_berth_answers?game_id=eq.{s_id}&select=answer_line_id", tok_a)
+check("the berth answers are unreadable, same as the sealed options and keys",
+      answers_leak == [] or (isinstance(answers_leak, dict) and bool(answers_leak.get("__error__"))),
+      f"got {json.dumps(answers_leak)[:80]}")
+
+frags_a = call("GET", f"/rest/v1/survival_fragments?game_id=eq.{s_id}&select=player_id", tok_a)
+frags_b = call("GET", f"/rest/v1/survival_fragments?game_id=eq.{s_id}&select=player_id", tok_b)
+a_frag_ids = {r["player_id"] for r in (frags_a or [])}
+b_frag_ids = {r["player_id"] for r in (frags_b or [])}
+check("both players were actually dealt a fragment for some berth",
+      len(a_frag_ids) > 0 and len(b_frag_ids) > 0,
+      f"a saw {len(frags_a or [])} row(s), b saw {len(frags_b or [])} row(s)")
+
+# Nobody has to know their own player id in advance: RLS on this table means
+# every row a query CAN return already belongs to whoever asked, so the only
+# thing worth asserting is that it never names the OTHER session's player —
+# a set naming both would mean RLS is leaking across sessions.
+check("a fragment query never names both players at once",
+      not (a_frag_ids and b_frag_ids and a_frag_ids == b_frag_ids),
+      f"a saw {a_frag_ids}, b saw {b_frag_ids}")
+check("and the two sessions never see an overlapping fragment row",
+      a_frag_ids.isdisjoint(b_frag_ids),
+      f"a saw {a_frag_ids}, b saw {b_frag_ids} — any overlap here is a leak")
+
+posted_before = call("GET", f"/rest/v1/survival_posts?game_id=eq.{s_id}&select=player_id", tok_b)
+check("nobody has published anything yet in this run", posted_before == [],
+      f"{len(posted_before or [])} row(s) already posted")
 
 print(f"\n{'=' * 60}\n  {len(passed)} passed, {len(failed)} failed")
 if failed:
