@@ -56,3 +56,45 @@ it('returns at most three prompts', () => {
   ]);
   expect(buildDebrief(answers).length).toBeLessThanOrEqual(3);
 });
+
+it('names the biggest publisher to the ledger, as a fourth prompt', () => {
+  const answers: Answer[] = [ans('a', 0, 1)];
+  const names: Record<string, string> = { p1: 'Priya', p2: 'Sam' };
+  const ledger = {
+    puzzles: [
+      { posted: [{ playerId: 'p1' }, { playerId: 'p1' }, { playerId: 'p2' }] },
+      { posted: [{ playerId: 'p1' }] },
+    ],
+    nameOf: (id: string) => names[id],
+  };
+  const prompts = buildDebrief(answers, ledger);
+  const ledgerPrompt = prompts.find((p) => p.title === 'Who fed the ledger');
+  expect(ledgerPrompt?.body).toContain('Priya published 3 fragments');
+});
+
+it('says nothing about the ledger when nobody ever posted', () => {
+  const ledger = { puzzles: [{ posted: [] }], nameOf: () => undefined };
+  expect(buildDebrief([ans('a', 0, 1)], ledger).some((p) => p.title === 'Who fed the ledger')).toBe(false);
+});
+
+it('never mentions the ledger at all when the caller has no puzzle data', () => {
+  // The three answer-based prompts must not silently start requiring it.
+  const answers: Answer[] = [ans('a', 0, 0), ans('b', 0, 1), ans('c', 0, 2)];
+  expect(buildDebrief(answers).some((p) => p.title === 'Who fed the ledger')).toBe(false);
+});
+
+it('adds the ledger prompt as a fourth slot rather than displacing the other three', () => {
+  const answers: Answer[] = [
+    ans('a', 0, 0), ans('b', 0, 1), ans('c', 0, 2),
+    ans('a', 1, 3), ans('b', 1, 3), ans('c', 1, 3),
+    ans('a', 3, 0), ans('b', 3, 0), ans('c', 3, 1),
+  ];
+  const ledger = {
+    puzzles: [{ posted: [{ playerId: 'a' }] }],
+    nameOf: () => 'Someone',
+  };
+  const withLedger = buildDebrief(answers, ledger);
+  const withoutLedger = buildDebrief(answers);
+  expect(withLedger.length).toBe(withoutLedger.length + 1);
+  for (const p of withoutLedger) expect(withLedger.map((x) => x.title)).toContain(p.title);
+});

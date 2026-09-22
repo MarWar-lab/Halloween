@@ -325,11 +325,16 @@ function KeyReveal({ snapshot }: { snapshot: Snapshot }) {
 /**
  * Discussion prompts for whoever is facilitating, built from what the room
  * actually did — not a fixed script. See src/survival/debrief.ts for why
- * this needs no new data: it is the same public per-round tally the live
- * reveal already showed, just kept for all nine rounds instead of one.
+ * the first three need no new data: it is the same public per-round tally
+ * the live reveal already showed, just kept for all nine rounds instead of
+ * one. The ledger prompt reads `puzzles[].posted`, which has been public
+ * since the moment each fragment was published — never anything still held.
  */
 function Debrief({ snapshot }: { snapshot: Snapshot }) {
-  const prompts = buildDebrief(snapshot.answers);
+  const prompts = buildDebrief(snapshot.answers, {
+    puzzles: snapshot.puzzles,
+    nameOf: (id) => snapshot.players.find((p) => p.id === id)?.name,
+  });
   if (prompts.length === 0) return null;
   return (
     <div className="debrief">

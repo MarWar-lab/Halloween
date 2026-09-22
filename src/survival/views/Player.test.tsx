@@ -161,3 +161,18 @@ it('marks the host behind once the night has genuinely overrun', () => {
   const html = render(late);
   expect(html).toContain('running long');
 });
+
+it('shows who fed the ledger, on the result screen, from public post data', () => {
+  const snap = base('result');
+  snap.standings = [{ playerId: 'Hana', name: 'Hana', rounds: 7, average: 65 }];
+  snap.puzzles = [
+    {
+      berth: 1, lines: [], myRule: null, myRulePosted: false,
+      posted: [{ playerId: 'Hana', text: 'Only berth 1 was still loading.' }],
+      askingPlayerIds: [], digit: 1, firstSolvedBy: 'Hana',
+    },
+  ];
+  const html = render(snap);
+  expect(html).toContain('Who fed the ledger');
+  expect(html).toContain('Hana published 1 fragment');
+});
