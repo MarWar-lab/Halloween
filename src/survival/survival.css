@@ -324,24 +324,45 @@
 
 /* ── media and the full reveal ────────────────────────────────────────────── */
 
-/* A normal block above the header. The phone already scrolls
-   (`.phone { overflow-y: auto }`), so this simply adds height rather than
-   needing to compete with the tap targets below it for space. */
-.survival .clip-strip {
-  width: 100%;
-  aspect-ratio: 16 / 9;
+/*
+ * The round's backdrop — full-bleed and fixed, the same layering
+ * `.bunker-map` uses, sitting between it and `.phone`'s own content. One
+ * mounted instance per QUESTION (see ClipStage.tsx), so choosing, locked
+ * and revealed read as one continuous shot instead of three restarts.
+ *
+ * The scrim and the heavy default dim/desaturate are not optional polish —
+ * the five choice buttons have to read identically whatever is playing
+ * behind them, so the video is never given enough presence to compete with
+ * text sitting on top of it. `data-beat` only ever adjusts how dim.
+ */
+.survival .clip-stage {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
   overflow: hidden;
-  border-radius: 0.5rem;
-  border: 1px solid var(--ink-edge);
-  /* `.phone` is a flex column, and a flex item's default `min-height: auto`
-     let the flex algorithm squash this down to a couple of pixels instead of
-     honouring aspect-ratio — it rendered as a sliver rather than a strip. */
-  flex-shrink: 0;
+  pointer-events: none;
 }
-.survival .clip-strip video {
+.survival .clip-stage video {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  filter: saturate(0.6) brightness(0.5);
+  transition: filter 1.2s ease, opacity 0.6s ease;
+}
+.survival .clip-stage::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(5, 7, 10, 0.6), rgba(5, 7, 10, 0.85) 65%);
+}
+/* Choosing is the default dim above. Locked settles further — the decision
+   is made, the room is waiting — and revealed brightens slightly, since
+   this is the one beat that rewards actually looking at the footage. */
+.survival .clip-stage[data-beat="locked"] video { filter: saturate(0.4) brightness(0.38); }
+.survival .clip-stage[data-beat="revealed"] video { filter: saturate(0.85) brightness(0.65); }
+
+@media (prefers-reduced-motion: reduce) {
+  .survival .clip-stage video { transition: none; }
 }
 
 .survival .setup {

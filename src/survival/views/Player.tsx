@@ -28,8 +28,9 @@ import {
 import { buildDebrief } from '../debrief';
 import { pacingFor } from '../pacing';
 import type { Survival } from '../state/useSurvival';
-import { Clip } from './Clip';
 import { Narration } from './Narration';
+import { ClipStage } from './ClipStage';
+import { useClipPrefetch } from './useClipPrefetch';
 import { clockOf } from '../puzzles';
 import { DigitRain } from '../scene/DigitRain';
 import { Terminal } from '../scene/Terminal';
@@ -42,8 +43,10 @@ interface Props {
 }
 
 export function Player({ survival, snapshot, me, isHost }: Props) {
+  useClipPrefetch(snapshot);
   return (
     <div className="phone">
+      <ClipStage snapshot={snapshot} me={me} />
       <div className="room-bar">
         <span>Room <strong>{snapshot.game.code}</strong></span>
         <span>{snapshot.players.find((p) => p.id === me)?.name}</span>
@@ -104,7 +107,6 @@ function Task({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
     if (!game.revealed && !mine) {
       return (
         <>
-          {question.clip && <Clip src={question.clip} />}
           <header>
             <p className="eyebrow">{questionLabel(game.questionIdx)}</p>
             <h2>{question.title}</h2>
@@ -146,7 +148,6 @@ function Task({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
       const onATeam = Boolean(snapshot.myTeam && snapshot.myTeam.length > 1);
       return (
         <div className="locked">
-          {question.clip && <Clip src={question.clip} />}
           <p className="eyebrow">Choice locked</p>
           {/* Letter and choice sit in one row, not stacked — the letter is
               decorative (the choice text already says what it means), and
@@ -194,7 +195,6 @@ function Task({ survival, snapshot, me }: Omit<Props, 'isHost'>) {
 
     return (
       <>
-        {question.clip && <Clip src={question.clip} />}
         <header>
           <p className="eyebrow">Outcome</p>
           <h2>{question.title}</h2>
