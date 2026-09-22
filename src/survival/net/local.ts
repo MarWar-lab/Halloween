@@ -910,11 +910,17 @@ function snapshotFor(doc: Doc, me: string | null): Snapshot {
     .sort((a, b) => a.solveOrder - b.solveOrder)
     .map((e) => e.playerId);
 
-  // In consensus mode, a clued round's digit goes to one randomly-assigned
-  // seer per team — everyone else on that team gets told who to ask instead
-  // of the number itself. Solo mode, and a teamless player, see it exactly
-  // like before: unconditionally, the moment the round is current.
-  const rawDigit = game.phase === 'running' && game.questionIdx in doc.clueDigits
+  // A GREEN round's digit is never handed out through this path, to anyone,
+  // seer or not — that is exactly the "shown to one player, not solved" bug
+  // the whole berth-puzzle system (dealPuzzles, the Exchange, the
+  // no-team-solves property) exists to close. It was left wired for every
+  // clued round when the puzzle system was built, which meant the puzzle
+  // was always optional: whoever was seer for a green round could just read
+  // the answer here and skip the Exchange entirely. Red decoys are the
+  // attention mechanic and keep working exactly as before — a red digit is
+  // not the code, so there is nothing for handing it out to undermine.
+  const isGreenRound = game.questionIdx >= 0 && QUESTIONS[game.questionIdx]?.manifest?.color === 'green';
+  const rawDigit = game.phase === 'running' && !isGreenRound && game.questionIdx in doc.clueDigits
     ? doc.clueDigits[game.questionIdx]
     : null;
   let clue: Snapshot['clue'] = null;

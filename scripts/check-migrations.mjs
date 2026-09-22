@@ -682,8 +682,15 @@ await db.query(`select survival_advance($1)`, [egame.id]); // → question 1
 
 await be(ECARA);
 currentClue = (await db.query(`select * from survival_clue_digits where game_id=$1`, [egame.id])).rows;
-check('once the host moves on, the previous round\'s digit is gone from view',
-  currentClue.length === 1 && currentClue[0].question_idx === 1);
+check("once the host moves on, the previous round's digit is gone from view",
+  !currentClue.some((r) => r.question_idx === 0));
+// Question 1 (The Feuding Neighbour) is a GREEN berth — this is the exact
+// case the green-seal migration exists for. It carries a clue, the round is
+// current, and it must still deliver nothing: a green round's digit is
+// never read from this table by anyone, seer or not. Only the Exchange
+// (survival_fragments / survival_posts) may ever produce it.
+check("a green round's digit is never delivered here, current or not",
+  currentClue.length === 0, JSON.stringify(currentClue));
 
 console.log('\n--- a wrong guess is recorded, never leaks, and never locks anyone out ---');
 const wrong = (await db.query(`select * from survival_escape($1,'0000')`, [egame.id])).rows[0];

@@ -149,6 +149,23 @@ migration, and asserts that nothing but the local backend imports it.
    generators are deliberately NOT the same code (a puzzle is per-game
    random, like the extraction digits always were), so what they share is
    the property, not the algorithm.
+8. **A green berth's digit is never delivered through `survival_clue_digits`
+   / `doc.clueDigits`, to anyone, in any mode.** That table (and its local
+   twin) predates the berth puzzles and was built for a red decoy's
+   attention mechanic — "shown to the current round's seer" — which is
+   fine for a red line and was never supposed to reach a green one. It did:
+   the puzzle system shipped without narrowing this path, so the seer for a
+   green round (or, in solo mode, anyone at all) could read the answer
+   directly and skip the Exchange entirely, making every fragment and the
+   whole `noTeamSolves` guarantee decorative. Fixed once in each backend —
+   `local.ts` excludes a green `questionIdx` from `rawDigit` outright, and
+   `survival_clue_digits_read` excludes any `question_idx` inside
+   `survival_green_berths()` — and covered by both a live SQL check
+   (`scripts/check-migrations.mjs`) and a mutation-tested suite in
+   `local.game.test.ts`. If a future round is added with `manifest.color:
+   'green'`, it inherits this for free; if the *color* check itself is ever
+   removed from either backend, the room's assigned seer goes back to
+   reading the code straight off the table.
 
 ## Where things live
 

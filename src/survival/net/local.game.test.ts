@@ -16,7 +16,7 @@ installBrowser();
 
 const { LocalSurvivalBackend } = await import('./local');
 const { SEALED, worstOption } = await import('../sealed');
-const { DARK_CHOICES, INTRO_QUESTIONS } = await import('../questions');
+const { DARK_CHOICES, INTRO_QUESTIONS, QUESTIONS } = await import('../questions');
 import { seatsFor } from '../types';
 import type { Snapshot } from '../types';
 
@@ -599,6 +599,82 @@ async function playOut(backend: Backend, gameId: string, best?: string) {
     if (q < SEALED.length - 1) await backend.advance(gameId);
   }
 }
+
+describe("a green berth's digit — never through the old clue path", () => {
+  // The bug this guards against: survival_clue_digits (and its local twin
+  // here) used to hand a clued round's digit straight to whoever the seer
+  // was, or to everyone in solo mode, with no distinction between a red
+  // decoy (attention only) and a green berth (the actual answer the whole
+  // fragment/Exchange system exists to protect). A green round's digit must
+  // never appear in `snapshot.clue`, current round or not, solo or
+  // consensus — the Exchange is the only legitimate way to learn it now.
+  const firstGreenIdx = QUESTIONS.findIndex((q) => q.manifest?.color === 'green');
+  const firstRedIdx = QUESTIONS.findIndex((q) => q.manifest && q.manifest.color !== 'green');
+
+  async function playTo(backend: Backend, gameId: string, questionIdx: number) {
+    tab('hana');
+    await backend.advance(gameId); // briefing
+    await backend.advance(gameId); // running — first warm-up
+    for (let i = 0; i < INTRO_QUESTIONS.length; i += 1) {
+      await backend.reveal(gameId);
+      await backend.advance(gameId);
+    }
+    for (let q = 0; q < questionIdx; q += 1) {
+      await backend.reveal(gameId);
+      await backend.advance(gameId);
+    }
+  }
+
+  it('is null in solo mode, exactly when the old path would have shown it to everyone', async () => {
+    installBrowser();
+    const backend = new LocalSurvivalBackend();
+    tab('hana');
+    const made = await backend.create('Hana');
+    await backend.setMode(made.gameId, 'solo');
+    await playTo(backend, made.gameId, firstGreenIdx);
+
+    const snap = seenBy(backend, 'hana', made.gameId);
+    expect(snap.game.questionIdx).toBe(firstGreenIdx);
+    expect(snap.clue).toBeNull();
+    expect(snap.clueSeer).toBeNull();
+  });
+
+  it('is null for the team\'s seer in consensus mode, not just everyone else', async () => {
+    installBrowser();
+    const backend = new LocalSurvivalBackend();
+    tab('hana');
+    const made = await backend.create('Hana');
+    tab('cara');
+    await backend.join(made.code, 'Cara');
+    tab('hana');
+    await backend.setMode(made.gameId, 'consensus');
+    await playTo(backend, made.gameId, firstGreenIdx);
+
+    for (const who of ['hana', 'cara']) {
+      const snap = seenBy(backend, who, made.gameId);
+      expect(snap.clue, `${who} (green round)`).toBeNull();
+      // Not even redirected to "ask your teammate" — there is no seer for a
+      // green round any more, because there is nothing left for a seer to
+      // see through this path.
+      expect(snap.clueSeer, `${who} (green round)`).toBeNull();
+    }
+  });
+
+  it('still works normally for a red decoy round, in the same game', async () => {
+    installBrowser();
+    const backend = new LocalSurvivalBackend();
+    tab('hana');
+    const made = await backend.create('Hana');
+    await backend.setMode(made.gameId, 'solo');
+    await playTo(backend, made.gameId, firstRedIdx);
+
+    const snap = seenBy(backend, 'hana', made.gameId);
+    expect(snap.game.questionIdx).toBe(firstRedIdx);
+    expect(snap.clue).not.toBeNull();
+    expect(snap.clue?.questionIdx).toBe(firstRedIdx);
+    expect(typeof snap.clue?.digit).toBe('number');
+  });
+});
 
 describe('consensus mode', () => {
   it('draws teams of two, folding the odd one out into the last team', async () => {

@@ -593,8 +593,31 @@ function ManifestLine({
 }: { question: Question; snapshot: Snapshot; questionIdx: number }) {
   const [revealed, setRevealed] = useState(false);
   const manifest = question.manifest;
-  const clue = snapshot.clue;
   if (!manifest) return null;
+
+  // A green berth's seal is never tap-revealed here, seer or not — solving
+  // it is the Exchange's job (see the ledger below the choices), not a
+  // second, easier way to read the same digit. This used to be the exact
+  // same tap-to-reveal as a red decoy, which meant the whole berth-puzzle
+  // system — fragments, no-team-solves, the Exchange — was optional: the
+  // round's seer could just read the answer here and never touch the
+  // ledger at all. The CRT terminal and the digit rain stay; only the
+  // number does not.
+  if (manifest.color === 'green') {
+    return (
+      <div className="manifest-rig">
+        <Terminal color="green" label={`BERTH ${manifest.berth}`}>
+          <DigitRain color="green" intensity={0.5} />
+        </Terminal>
+        <div className="transmission green asking">
+          This berth's seal is not on this screen. Assemble it from what the room posts to the
+          ledger below.
+        </div>
+      </div>
+    );
+  }
+
+  const clue = snapshot.clue;
 
   // Consensus mode: this round has a clue, but a teammate is the seer, not
   // me. Named who to ask, never the digit itself — the only way to get it
