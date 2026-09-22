@@ -34,6 +34,20 @@ export interface LedgerActivity {
   nameOf: (playerId: string) => string | undefined;
 }
 
+/**
+ * What this file is allowed to read about teams: who is on which one, and
+ * everyone's ruthless mark count — both already public at `result`, the
+ * same gate the ledger prompt and every answer-based prompt above already
+ * wait behind. Nothing about anyone's survival odds: those never become
+ * public at any phase, individually or aggregated, and a team prompt that
+ * needed them would not be buildable from data this file is allowed to see.
+ */
+export interface TeamActivity {
+  teams: { id: string; memberIds: string[] }[];
+  ruthless: { playerId: string; marks: number }[];
+  nameOf: (playerId: string) => string | undefined;
+}
+
 interface RoundTally {
   questionIdx: number;
   counts: number[];
@@ -53,11 +67,13 @@ const agreement = (r: RoundTally): number => Math.max(...r.counts) / r.total;
 
 /**
  * Up to three prompts built from the real spread of this game's answers,
- * plus a fourth — who fed the Exchange the most — when `ledger` is passed.
+ * plus a fourth — who fed the Exchange the most — when `ledger` is passed,
+ * plus a fifth — which team went furthest together — when `team` is passed.
  * Empty if there is nothing worth reading: too few real (non-auto) answers
- * for the first three, and nobody published anything for the fourth.
+ * for the first three, nobody published anything for the fourth, and no
+ * team carries a mark for the fifth.
  */
-export function buildDebrief(answers: Answer[], ledger?: LedgerActivity): DebriefPrompt[] {
+export function buildDebrief(answers: Answer[], ledger?: LedgerActivity, team?: TeamActivity): DebriefPrompt[] {
   // A "split" or "unanimous" reading needs at least two real choices to
   // compare — one player can't disagree with themselves.
   const rounds = QUESTIONS.map((_, i) => tally(answers, i)).filter((r) => r.total > 1);
@@ -98,7 +114,18 @@ export function buildDebrief(answers: Answer[], ledger?: LedgerActivity): Debrie
       const q = QUESTIONS[darkest.r.questionIdx];
       prompts.push({
         title: `The hardest call — ${q.title}`,
-        body: `${darkest.darkCount} of ${darkest.r.total} took the coldest option on the table. Worth asking what was going through their head.`,
+        // Reframed, not just reworded: the earlier version ("worth asking
+        // what was going through their head") reads as a verdict on
+        // whoever chose it. This game cannot honestly say the dark option
+        // was the round's best odds — the percentages behind every choice
+        // are sealed permanently, not just before the tribunal, so no
+        // debrief prompt may ever compare them — but it can say plainly
+        // that "coldest" and "safest-feeling in the moment" are not the
+        // same thing, which is the point either way: the system built the
+        // temptation, the choice was still real.
+        body: `${darkest.darkCount} of ${darkest.r.total} took the coldest option on the table — it often `
+          + 'reads as the safer bet in the moment, not the crueller one. Worth asking what made it feel '
+          + 'that way, not just why they took it.',
       });
     }
   }
@@ -109,7 +136,13 @@ export function buildDebrief(answers: Answer[], ledger?: LedgerActivity): Debrie
   const ledgerPrompt = ledger && buildLedgerPrompt(ledger);
   if (ledgerPrompt) prompts.push(ledgerPrompt);
 
-  return prompts.slice(0, ledger ? 4 : 3);
+  // A fifth, same reasoning: which team went furthest together, additive
+  // rather than competing with anything above.
+  const teamPrompt = team && buildTeamPrompt(team);
+  if (teamPrompt) prompts.push(teamPrompt);
+
+  const cap = 3 + (ledger ? 1 : 0) + (team ? 1 : 0);
+  return prompts.slice(0, cap);
 }
 
 /**
@@ -133,5 +166,34 @@ function buildLedgerPrompt(ledger: LedgerActivity): DebriefPrompt | null {
     title: 'Who fed the ledger',
     body: `${name} published ${topCount} fragment${topCount === 1 ? '' : 's'} to the room — more than anyone `
       + 'else. Every one of those helped whoever was racing them for a seat. Worth asking what that cost.',
+  };
+}
+
+/**
+ * Which team carries the most ruthless marks between its members. Safe to
+ * compute from a single representative mark count per team, because
+ * consensus mode means every member of a team shares one tap on every
+ * question — but `Math.max` across members is used anyway, defensively, so
+ * a team that somehow split (a late joiner dealt in mid-game, say) is still
+ * read by its most-marked member rather than an arbitrary one.
+ */
+function buildTeamPrompt(activity: TeamActivity): DebriefPrompt | null {
+  if (activity.teams.length < 2) return null;
+
+  const teamMarks = activity.teams.map((team) => {
+    const marks = team.memberIds.map((id) => activity.ruthless.find((r) => r.playerId === id)?.marks ?? 0);
+    return { team, marks: marks.length > 0 ? Math.max(...marks) : 0 };
+  });
+  const highest = [...teamMarks].sort((a, b) => b.marks - a.marks)[0];
+  if (!highest || highest.marks === 0) return null;
+
+  const names = highest.team.memberIds.map((id) => activity.nameOf(id)).filter((n): n is string => !!n);
+  if (names.length === 0) return null;
+
+  return {
+    title: 'The team that went furthest',
+    body: `${names.join(', ')} carry ${highest.marks} ${highest.marks === 1 ? 'mark' : 'marks'} between them — `
+      + "every one of you shared that call, since a team's tap decides it for everyone on it. Worth asking how "
+      + 'it felt to carry that together.',
   };
 }

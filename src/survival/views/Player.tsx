@@ -336,12 +336,16 @@ function KeyReveal({ snapshot }: { snapshot: Snapshot }) {
  * the live reveal already showed, just kept for all nine rounds instead of
  * one. The ledger prompt reads `puzzles[].posted`, which has been public
  * since the moment each fragment was published — never anything still held.
+ * The team prompt reads `teams` and `ruthless`, both public by this same
+ * gate; never a survival percentage, which stays sealed at every phase.
  */
 function Debrief({ snapshot }: { snapshot: Snapshot }) {
-  const prompts = buildDebrief(snapshot.answers, {
-    puzzles: snapshot.puzzles,
-    nameOf: (id) => snapshot.players.find((p) => p.id === id)?.name,
-  });
+  const nameOf = (id: string) => snapshot.players.find((p) => p.id === id)?.name;
+  const prompts = buildDebrief(
+    snapshot.answers,
+    { puzzles: snapshot.puzzles, nameOf },
+    snapshot.teams ? { teams: snapshot.teams, ruthless: snapshot.ruthless ?? [], nameOf } : undefined,
+  );
   if (prompts.length === 0) return null;
   return (
     <div className="debrief">

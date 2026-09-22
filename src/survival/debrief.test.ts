@@ -98,3 +98,65 @@ it('adds the ledger prompt as a fourth slot rather than displacing the other thr
   expect(withLedger.length).toBe(withoutLedger.length + 1);
   for (const p of withoutLedger) expect(withLedger.map((x) => x.title)).toContain(p.title);
 });
+
+it('names the team carrying the most ruthless marks together, as a fifth prompt', () => {
+  const names: Record<string, string> = { a: 'Priya', b: 'Sam', c: 'Cara', d: 'Dev' };
+  const team = {
+    teams: [
+      { id: 't1', memberIds: ['a', 'b'] },
+      { id: 't2', memberIds: ['c', 'd'] },
+    ],
+    ruthless: [
+      { playerId: 'a', marks: 3 }, { playerId: 'b', marks: 3 },
+      { playerId: 'c', marks: 1 }, { playerId: 'd', marks: 1 },
+    ],
+    nameOf: (id: string) => names[id],
+  };
+  const prompts = buildDebrief([ans('a', 0, 1)], undefined, team);
+  const teamPrompt = prompts.find((p) => p.title === 'The team that went furthest');
+  expect(teamPrompt?.body).toContain('Priya, Sam');
+  expect(teamPrompt?.body).toContain('3 marks');
+});
+
+it('says nothing about teams when nobody carries a mark', () => {
+  const team = {
+    teams: [{ id: 't1', memberIds: ['a'] }, { id: 't2', memberIds: ['b'] }],
+    ruthless: [{ playerId: 'a', marks: 0 }, { playerId: 'b', marks: 0 }],
+    nameOf: () => 'Someone',
+  };
+  expect(buildDebrief([ans('a', 0, 1)], undefined, team).some((p) => p.title === 'The team that went furthest'))
+    .toBe(false);
+});
+
+it('says nothing about teams when there is only one team', () => {
+  const team = {
+    teams: [{ id: 't1', memberIds: ['a', 'b'] }],
+    ruthless: [{ playerId: 'a', marks: 2 }, { playerId: 'b', marks: 2 }],
+    nameOf: () => 'Someone',
+  };
+  expect(buildDebrief([ans('a', 0, 1)], undefined, team).some((p) => p.title === 'The team that went furthest'))
+    .toBe(false);
+});
+
+it('never mentions a team at all when the caller has no team data', () => {
+  const answers: Answer[] = [ans('a', 0, 0), ans('b', 0, 1), ans('c', 0, 2)];
+  expect(buildDebrief(answers).some((p) => p.title === 'The team that went furthest')).toBe(false);
+});
+
+it('adds the team prompt as a fifth slot alongside the ledger prompt, displacing neither', () => {
+  const answers: Answer[] = [
+    ans('a', 0, 0), ans('b', 0, 1), ans('c', 0, 2),
+    ans('a', 1, 3), ans('b', 1, 3), ans('c', 1, 3),
+    ans('a', 3, 0), ans('b', 3, 0), ans('c', 3, 1),
+  ];
+  const ledger = { puzzles: [{ posted: [{ playerId: 'a' }] }], nameOf: () => 'Someone' };
+  const team = {
+    teams: [{ id: 't1', memberIds: ['a'] }, { id: 't2', memberIds: ['b'] }],
+    ruthless: [{ playerId: 'a', marks: 1 }, { playerId: 'b', marks: 0 }],
+    nameOf: () => 'Someone',
+  };
+  const withBoth = buildDebrief(answers, ledger, team);
+  const withNeither = buildDebrief(answers);
+  expect(withBoth.length).toBe(withNeither.length + 2);
+  for (const p of withNeither) expect(withBoth.map((x) => x.title)).toContain(p.title);
+});
