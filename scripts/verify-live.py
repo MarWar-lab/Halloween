@@ -421,13 +421,29 @@ check("one player's attempts are invisible to another", a_ids.isdisjoint(b_ids),
 # invisible to another — this game already dealt fragments for every green
 # berth back at the briefing, solo mode included.
 
+# A PGRST205 (schema-cache "table not found") means the puzzle migrations
+# have not reached this project yet, not that anything leaked — fail loudly
+# and stop rather than let every remaining line here crash on data shaped
+# like an error object instead of a list, the way an ordinary Python
+# exception would if this were left unguarded.
+def table_missing(result):
+    return isinstance(result, dict) and result.get("__error__") == 404 and "PGRST205" in str(result)
+
 answers_leak = call("GET", f"/rest/v1/survival_berth_answers?game_id=eq.{s_id}&select=answer_line_id", tok_a)
+if table_missing(answers_leak):
+    print("  FAIL  the berth-puzzle migrations have not reached this project")
+    print("\n  Run supabase/migrations/20260922091000_survival_ledger.sql onward, then run this again.")
+    raise SystemExit(1)
 check("the berth answers are unreadable, same as the sealed options and keys",
       answers_leak == [] or (isinstance(answers_leak, dict) and bool(answers_leak.get("__error__"))),
       f"got {json.dumps(answers_leak)[:80]}")
 
 frags_a = call("GET", f"/rest/v1/survival_fragments?game_id=eq.{s_id}&select=player_id", tok_a)
 frags_b = call("GET", f"/rest/v1/survival_fragments?game_id=eq.{s_id}&select=player_id", tok_b)
+if table_missing(frags_a) or table_missing(frags_b):
+    print("  FAIL  survival_fragments has not reached this project")
+    print("\n  Run supabase/migrations/20260922091000_survival_ledger.sql onward, then run this again.")
+    raise SystemExit(1)
 a_frag_ids = {r["player_id"] for r in (frags_a or [])}
 b_frag_ids = {r["player_id"] for r in (frags_b or [])}
 check("both players were actually dealt a fragment for some berth",
