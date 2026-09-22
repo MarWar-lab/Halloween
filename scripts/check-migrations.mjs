@@ -1037,6 +1037,34 @@ check('five players draw a team of two and a team of three, nobody standing alon
   members.map((r) => r.n).sort().join(',') === '2,3',
   members.map((r) => `team ${r.team_no}: ${r.n}`).join(', '));
 
+// Five players is the one headcount where the old "fixed pairs" formula and
+// teamsFor happen to agree (both give a team of 2 and a team of 3), so the
+// check above cannot by itself prove teamsFor is what actually ran. Eight
+// players is where they first diverge: fixed pairs gives four teams of two,
+// teamsFor(8) gives two teams of four — the whole reason teams exist here.
+await db.exec('reset role;');
+const eightUid = (n) => `8${String(n).padStart(7, '0')}-8787-8787-8787-${String(n).padStart(12, '0')}`;
+await be(eightUid(0));
+const eightGame = (await db.query(`select * from survival_create('E-Host')`)).rows[0];
+for (let i = 1; i < 8; i += 1) {
+  await be(eightUid(i));
+  await db.query(`select survival_join($1,$2)`, [eightGame.code, `E-P${i}`]);
+}
+await be(eightUid(0));
+await db.query(`select survival_set_mode($1,'consensus')`, [eightGame.id]);
+await db.query(`select survival_advance($1)`, [eightGame.id]); // briefing — teams drawn here
+const eightMembers = (await db.query(
+  `select team_no, count(*)::int as n from survival_team_members
+    where game_id = $1 group by team_no order by team_no`, [eightGame.id],
+)).rows;
+check('eight players draw two teams of four, not four teams of two',
+  eightMembers.length === 2 && eightMembers.every((r) => r.n === 4),
+  eightMembers.map((r) => `team ${r.team_no}: ${r.n}`).join(', '));
+
+// Restore the THOST context this section was already running under —
+// the eight-player detour above ends on its own last-joined player.
+await be(THOST);
+
 check('too late to change the mode once the briefing has started',
   !!(await refuses(`select survival_set_mode($1,'solo')`, [tgame.id])));
 

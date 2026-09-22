@@ -18,7 +18,7 @@
 
 import { SEALED, worstOption } from '../sealed';
 import { CHOICE_QUESTIONS, seatsFor, survivalOddsOf, survivalOddsPrecise } from '../types';
-import { teamSizes } from '../scale';
+import { partitionInto, teamSizes } from '../scale';
 import type {
   Answer,
   Game,
@@ -139,24 +139,17 @@ function shuffled<T>(items: T[]): T[] {
 }
 
 /**
- * Pairs, in random order, with the odd one out folded into the LAST team as
- * a trio rather than left standing alone — 5 players makes [2, 3], not
- * [2, 2, 1]. Randomised on purpose: who ends up with whom must never be
+ * Threes and fours, in random order, sized by `teamsFor`/`partitionInto` in
+ * `../scale` — 20 players makes six teams of [4, 4, 3, 3, 3, 3], not ten
+ * pairs. Randomised on purpose: who ends up with whom must never be
  * something a group of friends could arrange by controlling when they join.
  * A single leftover player (an N of 1) gets a team of one, which is a
  * degenerate but harmless case: `teamOf` below treats a teamless player
  * exactly the same way anyway.
  */
 function chunkIntoTeams(playerIds: string[]): { id: string; memberIds: string[] }[] {
-  const shuffledIds = shuffled(playerIds);
-  const n = shuffledIds.length;
-  if (n === 0) return [];
-  const teamCount = Math.max(1, Math.floor(n / 2));
-  return Array.from({ length: teamCount }, (_, t) => {
-    const start = t * 2;
-    const end = t === teamCount - 1 ? n : start + 2;
-    return { id: `team-${t + 1}`, memberIds: shuffledIds.slice(start, end) };
-  });
+  const teams = partitionInto(shuffled(playerIds));
+  return teams.map((memberIds, t) => ({ id: `team-${t + 1}`, memberIds }));
 }
 
 /**
