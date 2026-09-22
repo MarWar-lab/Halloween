@@ -948,7 +948,8 @@ function Keypad({
       </p>
       {onATeam && (
         <p className="muted" style={{ fontSize: '0.8rem' }}>
-          One keypad for the whole team — any of you can try it, and cracking it seats you all.
+          One keypad, one cooldown, shared by the whole team — but the seat goes to whoever
+          actually states it. Solve it together; only the one who types it walks through the door.
         </p>
       )}
       <input
@@ -1002,21 +1003,57 @@ function Keypad({
   );
 }
 
-/** You made it. No plea to compose, no vote to enter — the seat is already yours. */
+/** Ordinal suffix for a small positive rank: 1st, 2nd, 3rd, 4th, 11th, 21st… */
+function ordinal(n: number): string {
+  const mod100 = n % 100;
+  if (mod100 >= 11 && mod100 <= 13) return `${n}th`;
+  switch (n % 10) {
+    case 1: return `${n}st`;
+    case 2: return `${n}nd`;
+    case 3: return `${n}rd`;
+    default: return `${n}th`;
+  }
+}
+
+/**
+ * You typed the right code. No plea to compose, no vote to enter — but
+ * unlike the old two-path night, that is NOT the same as a seat.
+ *
+ * The escape path is deliberately capped at a share of the seats on offer,
+ * not "every clean solver" — the code is common knowledge the instant one
+ * person has it (nothing stops it being read aloud), so an uncapped escape
+ * path would let the whole room walk through the same door the moment it
+ * leaked, and the record and vote paths would never matter. So rank here is
+ * Real but provisional: a real second-to-solve player can still end the
+ * night with no seat if the code's share is already spent. Say so plainly —
+ * this screen used to promise "you are on the chopper," which a real
+ * playtest proved false the first time two people typed the same code.
+ */
 function Aboard({ snapshot, me }: { snapshot: Snapshot; me: string }) {
   const rank = snapshot.escapedPlayerIds.indexOf(me) + 1;
+  const teammatesAboard = (snapshot.myTeam ?? []).filter((id) => id !== me && snapshot.escapedPlayerIds.includes(id));
+  // Excludes teammates: they're named in the line above, and naming them
+  // again here read as though two different things had happened.
   const others = snapshot.escapedPlayerIds
-    .filter((id) => id !== me)
+    .filter((id) => id !== me && !teammatesAboard.includes(id))
     .map((id) => snapshot.players.find((p) => p.id === id)?.name)
     .filter(Boolean);
-  const teammatesAboard = (snapshot.myTeam ?? []).filter((id) => id !== me && snapshot.escapedPlayerIds.includes(id));
   return (
     <div className="locked">
       <p className="eyebrow">Extraction code accepted</p>
-      <p className="big">Seat {rank}</p>
-      <p className="muted">You are on the chopper.</p>
-      {teammatesAboard.length > 0 && <p className="muted">Cracked it together with your team.</p>}
-      {others.length > 0 && <p className="muted">Also aboard: {others.join(', ')}</p>}
+      <p className="big">{ordinal(rank)} to crack it</p>
+      <p className="muted">
+        That stands whatever else happens tonight. Whether it wins you a seat is decided at the
+        tribunal — the code only claims some of them.
+      </p>
+      {teammatesAboard.length > 0 && (
+        <p className="muted">
+          Your team solved it together —{' '}
+          {teammatesAboard.map((id) => snapshot.players.find((p) => p.id === id)?.name).filter(Boolean).join(', ')}
+          {' '}stated it too.
+        </p>
+      )}
+      {others.length > 0 && <p className="muted">Also stated it: {others.join(', ')}</p>}
       <p className="muted" style={{ fontSize: '0.8rem' }}>
         The port has your name. It also has your record.
       </p>

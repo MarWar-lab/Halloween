@@ -50,6 +50,32 @@ for (const style of styles) {
     linked ? 'linked from index.html' : referenced ? 'loaded by a chunk' : 'ORPHANED');
 }
 
+console.log('\n=== every asset a question references actually shipped ===');
+// This is the exact bug class that bit production once: a Question.clip
+// path can be perfectly correct code and still 404 on a live deploy if the
+// file itself was never `git add`ed. Five of nine clips did exactly that.
+// Reading questions.ts as text (not importing it) keeps this script runnable
+// against a bare `dist/` with no build tooling loaded.
+const questionsSource = readFileSync(join(root, 'src/survival/questions.ts'), 'utf8');
+const assetPaths = [...questionsSource.matchAll(/clip:\s*'(\/[^']+)'/g)].map((m) => m[1]);
+// Anything else referenced by a literal `src="/...")` or `src='/...'` in the
+// source tree — the CRT terminal photo, and anything added after it.
+const srcDir = join(root, 'src');
+const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+  const full = join(dir, entry.name);
+  if (entry.isDirectory()) return walk(full);
+  if (!/\.(ts|tsx)$/.test(entry.name)) return [];
+  const text = readFileSync(full, 'utf8');
+  return [...text.matchAll(/src=["'](\/[^"']+)["']/g)].map((m) => m[1]);
+});
+for (const path of walk(srcDir)) if (!assetPaths.includes(path)) assetPaths.push(path);
+
+check('at least one asset reference was found to check', assetPaths.length > 0,
+  `found ${assetPaths.length}`);
+for (const assetPath of assetPaths) {
+  check(`${assetPath} exists in dist/`, existsSync(join(dist, assetPath.slice(1))));
+}
+
 console.log('\n=== production keeps the survival answer table off the client ===');
 // Local-only demos intentionally contain the table; never deploy them as the
 // sealed multiplayer game. The flag must be explicit for this check too.

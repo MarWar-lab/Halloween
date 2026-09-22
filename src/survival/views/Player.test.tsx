@@ -117,3 +117,28 @@ it('tells the room what the code was, once it no longer matters', () => {
   // And nothing leaks it before the helicopter has lifted.
   expect(render(base('tribunal'))).not.toContain('4821');
 });
+
+it('never tells a solver they have a seat before the seat list exists', () => {
+  // A real playtest proved this false: with a capped escape-path budget, the
+  // second person to state the correct code can genuinely end the night with
+  // no seat at all, even though the old copy told them "you are on the
+  // chopper" the moment their guess was accepted.
+  const snap = base('plea');
+  snap.escapedPlayerIds = ['Cara', 'Hana'];
+  const html = render(snap);
+  expect(html).toContain('2nd to crack it');
+  expect(html).toContain('Whether it wins you a seat is decided at the tribunal');
+  expect(html).not.toContain('You are on the chopper');
+  expect(html).not.toContain('Seat 2');
+});
+
+it('names a teammate who also stated the code, but not twice', () => {
+  const snap = base('plea');
+  snap.escapedPlayerIds = ['Hana', 'Cara'];
+  snap.myTeam = ['Hana', 'Cara'];
+  const html = render(snap);
+  expect(html).toContain('Cara stated it too');
+  // The "also stated it" line is for non-teammates; Cara is a teammate and
+  // is only named once, in the teammate line above.
+  expect(html).not.toContain('Also stated it');
+});
