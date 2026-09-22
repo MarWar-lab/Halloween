@@ -356,6 +356,13 @@ await be(DEV);
 const pDev = (await db.query(`select * from survival_join($1,'Dev')`, [sgame.code])).rows[0];
 check('two more players joined', !!pCara?.id && !!pDev?.id);
 
+// Explicit: this whole section is about individual answers, individual
+// percentages and individual auto-assignment — three players default into
+// one shared team now that consensus is the default mode, and a shared
+// team's tap fans out to everyone on it.
+await be(SHOST);
+await db.query(`select survival_set_mode($1, 'solo')`, [sgame.id]);
+
 console.log('\n--- the sealed table has no way in ---');
 await be(CARA);
 check('a player cannot read survival_options',
@@ -601,6 +608,15 @@ await be(EDEV);
 const eDev = (await db.query(`select * from survival_join($1,'Dev')`, [egame.code])).rows[0];
 await be(ELEE);
 const eLee = (await db.query(`select * from survival_join($1,'Lee')`, [egame.code])).rows[0];
+
+// Explicit: this whole section is about individual cooldowns, individual
+// solve order and individual disqualification — four players default into
+// two shared teams now that consensus is the default mode, and a team's
+// shared cooldown turns "one player's wrong guess" into "everyone on their
+// team is now blocked too," which crashes an unguarded call further down
+// the moment two teammates try the keypad back to back.
+await be(EHOST);
+await db.query(`select survival_set_mode($1, 'solo')`, [egame.id]);
 
 console.log('\n--- the sealed puzzle has no way in ---');
 await be(ECARA);

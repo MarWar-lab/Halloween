@@ -53,6 +53,11 @@ describe('The Last Screen Standing, through the local backend', () => {
     tab('dev');
     await backend.join(code, 'Dev');
     tab('hana');
+    // Every test in this suite is about individual answers, individual
+    // percentages and individual seats — consensus became the default mode
+    // once teams started mattering, so this has to ask for solo explicitly
+    // rather than lean on what a new game used to default to.
+    await backend.setMode(gameId, 'solo');
     await backend.advance(gameId); // briefing
     await backend.advance(gameId); // running — the first warm-up, question_idx negative
     await skipWarmups(backend, gameId); // every test below assumes it starts at question 0
@@ -298,6 +303,9 @@ describe('the two warm-ups', () => {
     tab('cara');
     await backend.join(made.code, 'Cara');
     tab('hana');
+    // Explicit: two players default into one shared team, and a team's tap
+    // fans out to everyone on it — which would turn "one answer" into two.
+    await backend.setMode(made.gameId, 'solo');
     await backend.advance(made.gameId); // briefing
     await backend.advance(made.gameId); // running — first warm-up
 
@@ -324,6 +332,7 @@ describe('the two warm-ups', () => {
     tab('cara');
     await backend.join(made.code, 'Cara');
     tab('hana');
+    await backend.setMode(made.gameId, 'solo');
     await backend.advance(made.gameId); // briefing
     await backend.advance(made.gameId); // running — first warm-up, nobody answers
     await backend.reveal(made.gameId);
@@ -342,6 +351,7 @@ describe('the two warm-ups', () => {
     tab('hana');
     const made = await backend.create('Hana');
     tab('hana');
+    await backend.setMode(made.gameId, 'solo');
     await backend.advance(made.gameId); // briefing
     await backend.advance(made.gameId); // running — first warm-up
     await backend.reveal(made.gameId);
@@ -388,6 +398,10 @@ describe('the extraction code', () => {
     tab('dev');
     await backend.join(code, 'Dev');
     tab('hana');
+    // Explicit: this whole suite is about individual attempts, individual
+    // cooldowns and individual solve order, and three players default into
+    // one shared team where all of that becomes team-wide instead.
+    await backend.setMode(gameId, 'solo');
     await backend.advance(gameId); // briefing
     await backend.advance(gameId); // running — first warm-up
     await skipWarmups(backend, gameId);
@@ -607,11 +621,12 @@ describe('consensus mode', () => {
     expect([...sizes].sort()).toEqual([2, 2, 3, 3, 3]);
   });
 
-  it('is null (no team) in solo mode, the default', async () => {
+  it('is null (no team) when a host switches a lobby to solo', async () => {
     installBrowser();
     const backend = new LocalSurvivalBackend();
     tab('hana');
     const made = await backend.create('Hana');
+    await backend.setMode(made.gameId, 'solo');
     await backend.advance(made.gameId); // briefing
     expect(seenBy(backend, 'hana', made.gameId).myTeam).toBeNull();
   });
@@ -821,6 +836,11 @@ describe('consensus mode', () => {
       await backend.join(made.code, name[0].toUpperCase() + name.slice(1));
     }
     tab('hana');
+    // Explicit: this proves each of the three paths seats a distinct
+    // INDIVIDUAL, which a team's shared answers and shared escape would
+    // blur — five players default into two teams, and a teammate would
+    // otherwise share Cara's record or Dev's escape.
+    await backend.setMode(made.gameId, 'solo');
     await backend.advance(made.gameId); // briefing
     await backend.advance(made.gameId); // running
     await skipWarmups(backend, made.gameId);

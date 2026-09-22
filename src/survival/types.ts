@@ -39,10 +39,13 @@ export interface Game {
   revealed: boolean;
   createdAt: string;
   /**
-   * 'solo' (the default): every player answers alone. 'consensus': players
-   * are grouped into small teams before the briefing, and a team answers
-   * together — whichever member taps first locks the choice in for all of
-   * them. Host-set, lobby-only; see `Snapshot.myTeam`.
+   * 'consensus' (the default): players are grouped into small teams before
+   * the briefing, and a team answers together — whichever member taps first
+   * locks the choice in for all of them, and the berth puzzles split their
+   * key rules across teams so no team can solve a berth alone. 'solo':
+   * every player answers alone, and the cross-team puzzle guarantee is
+   * unavailable — there is only one team, the whole room. Host-set,
+   * lobby-only; see `Snapshot.myTeam`.
    */
   mode: 'solo' | 'consensus';
 }

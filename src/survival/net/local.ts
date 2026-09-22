@@ -319,7 +319,7 @@ export class LocalSurvivalBackend implements SurvivalBackend {
         questionIdx: 0,
         revealed: false,
         createdAt: now,
-        mode: 'solo',
+        mode: 'consensus',
       },
       players: [
         { id: playerId, gameId, userId: 'local-host', name: name.slice(0, 12), lastSeen: now },
