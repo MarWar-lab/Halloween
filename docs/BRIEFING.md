@@ -7,11 +7,44 @@ commented where it matters.
 
 A realtime survival party game for distributed teams. Everyone plays from
 their own device — there is no separate shared screen. Two zero-stakes
-warm-ups, then a run of scripted questions, then a plea. Every question
-offers five moves; everyone taps one; every device opens the same full
-reveal — all five outcomes, each person's name against what they chose. No
-voting until the very last step: an open plea, followed by one vote for a
-winner.
+warm-ups, then a run of scripted questions, then a plea, a tribunal and a
+result. Every question offers five moves; everyone taps one; every device
+opens the same full reveal — all five outcomes, each person's name against
+what they chose.
+
+**The room is usually split into teams** (`mode: 'consensus'`, a host toggle
+at the lobby — see `chunkIntoTeams` in `src/survival/net/local.ts`). A team
+answers as one: whoever taps first locks the move in for the whole team.
+
+**Three ways to leave the city, not one.** Seats are budgeted across three
+paths — see `computeSeats` in `src/survival/net/local.ts` — so all three
+phases of the night are load-bearing instead of the vote deciding
+everything:
+
+- **The code.** Four green berths, each a small distributed puzzle: every
+  player holds one verification rule (`src/survival/puzzles.ts`), no single
+  TEAM's rules narrow the manifest to one line, and the digit is the answer,
+  not something shown to anybody. **The Exchange** (`Player.tsx`'s
+  `Exchange` component, backed by `survival_posts`/`survival_asks` in SQL)
+  is the shared ledger fragments move across: posting your own rule is a
+  tap, asking for a berth you're missing is a tap, and — the one rule that
+  makes it work — a fragment you keep to yourself still vanishes when the
+  host advances; a fragment you post persists. Whoever actually types the
+  finished code gets a seat; their team does not get seated automatically.
+- **The record.** Best `survivalOddsPrecise` among everyone who didn't
+  escape.
+- **The room.** The tribunal's vote, after a 150-character plea.
+
+An escape seat, a record seat and a vote seat can all go unclaimed in the
+same night (nobody solved the code; a tied record) — the result screen
+names that as the room's own outcome, not just a list of winners.
+
+**The bunker map** (`src/survival/scene/BunkerMap.tsx`) is an ambient
+backdrop behind every screen, driven by a single 0–1 `tension` value
+(`src/survival/tension.ts`) computed only from facts every viewer already
+has — who's answered, who's stuck on a keypad, how much of the ledger is
+still being hoarded. It cannot leak anything sealed because it never
+receives anything sealed.
 
 This repo used to also serve *Campfire*, a card-drawing party game with a
 procedural canvas scene, from the same deployment. Campfire has been pulled
@@ -101,6 +134,21 @@ migration, and asserts that nothing but the local backend imports it.
    change in `supabase/migrations/*.sql`, and vice versa. The local backend
    being more permissive than the real one is the most dangerous bug class
    here.
+6. **A third of any team will not perform on camera. Nothing may require a
+   voice.** This is why the Exchange is tap-first — posting a fragment,
+   asking for a berth, submitting a solve are all one tap, never a typed
+   value or a "say it out loud" affordance — and why `noTeamSolves` in
+   `src/survival/puzzles.ts` guarantees a puzzle needs cross-team fragments
+   without ever requiring a specific person to speak. Test it by playing a
+   full night in one tab using only taps, no voice and no chat, and
+   confirming that tab can still reach a seat.
+7. **No berth puzzle may be solvable by one team alone.** That is
+   `noTeamSolves`, checked over hundreds of seeds in
+   `src/survival/puzzles.test.ts` and mirrored as a live property check in
+   `scripts/check-migrations.mjs` against the SQL generator — the two
+   generators are deliberately NOT the same code (a puzzle is per-game
+   random, like the extraction digits always were), so what they share is
+   the property, not the algorithm.
 
 ## Where things live
 
@@ -114,12 +162,13 @@ migration, and asserts that nothing but the local backend imports it.
 | `src/survival/types.ts` | the whole vocabulary, including `survivalOddsOf` |
 | `src/survival/questions.ts` | the scripted questions and warm-ups |
 | `src/survival/sealed.ts` | the local mirror of the sealed percentages — local backend only |
-| `src/survival/puzzles.ts` | puzzle/riddle logic |
-| `src/survival/pacing.ts` | timing/pacing for the arc |
-| `src/survival/scale.ts` | sizing the game to who turned up |
+| `src/survival/puzzles.ts` | the four berth puzzles: fragment generation, `noTeamSolves`, `dealPuzzle` |
+| `src/survival/pacing.ts` | the night's time budget; drives the host console's "N of 45 min" line |
+| `src/survival/scale.ts` | sizing seats and teams to who turned up — `seatsFor`, `teamsFor` |
 | `src/survival/debrief.ts` | the private per-question recap shown before the plea composer |
 | `src/survival/tension.ts` | the bunker map's one input — a 0-1 value built only from already-public snapshot fields |
 | `src/survival/scene/BunkerMap.tsx` | the ambient node-grid backdrop behind every screen, driven by tension |
+| `src/survival/scene/Terminal.tsx` | the manifest's CRT-photo frame; `DigitRain.tsx` is what plays inside it |
 | `src/lib/` | shared infra: Supabase client, anonymous auth, server clock sync |
 | `supabase/migrations/` | schema, RLS policies and the RPCs that own every state change |
 | `scripts/check-migrations.mjs` | PGlite: applies every migration, plays a round, re-applies |
