@@ -23,14 +23,25 @@ export interface DebriefPrompt {
 }
 
 /**
- * The only ledger fact this file is allowed to read: who published a
- * fragment, and how many. Nothing about which berth, which rule, or who
- * held one and never posted — a fragment nobody published stays exactly as
- * invisible in the debrief as it was all night. That silence is the seal
- * working, not a gap in this prompt.
+ * The two ledger facts this file is allowed to read: who published a
+ * fragment (and how many), and who is still openly asking for one —
+ * `askingPlayerIds` is the same list `Player.tsx`'s `Exchange` already shows
+ * every viewer live ("3 people are asking for this one"), so naming it here
+ * unseals nothing that wasn't already on everyone's own screen.
+ *
+ * What stays out: which berth a still-open ask was ever for, who held a
+ * fragment and never posted it, and whether any given ask was later
+ * answered. The first two are private per-player facts this file may never
+ * read. The third is not a matter of principle but of data: `local.ts`
+ * clears an ask the moment its team solves that berth (`doc.asks` filtered
+ * in `solveBerth`), so by the time this runs at `result` an answered ask has
+ * already vanished — there is nothing left to report it from. Only an ask
+ * still open when the night ended survives to be named, which is exactly
+ * the shape of fact worth a debrief prompt: not "who helped whom," but "who
+ * never got an answer."
  */
 export interface LedgerActivity {
-  puzzles: { posted: { playerId: string }[] }[];
+  puzzles: { posted: { playerId: string }[]; askingPlayerIds: string[] }[];
   nameOf: (playerId: string) => string | undefined;
 }
 
@@ -145,28 +156,45 @@ export function buildDebrief(answers: Answer[], ledger?: LedgerActivity, team?: 
   return prompts.slice(0, cap);
 }
 
+/** "A" / "A and B" / "A, B and C" — a debrief-local copy of Player.tsx's own joinNames. */
+const joinNames = (names: string[]): string =>
+  names.length <= 1 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+
 /**
- * Who published the most fragments to the Exchange — the one piece of
- * cross-team behaviour this game can name without unsealing anything,
- * because publishing is the one thing that was never private in the first
- * place.
+ * Two facts about the Exchange, additive rather than either displacing the
+ * other: who published the most (the one piece of generosity this game can
+ * name without unsealing anything, since publishing was never private), and
+ * who asked for a fragment and the room never came through for — see the
+ * doc comment on `LedgerActivity` for why "who was answered" and "who
+ * hoarded" cannot honestly join these two.
  */
 function buildLedgerPrompt(ledger: LedgerActivity): DebriefPrompt | null {
   const counts = new Map<string, number>();
   for (const puzzle of ledger.puzzles) {
     for (const post of puzzle.posted) counts.set(post.playerId, (counts.get(post.playerId) ?? 0) + 1);
   }
-  if (counts.size === 0) return null;
 
-  const [topId, topCount] = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
-  const name = ledger.nameOf(topId);
-  if (!name || topCount === 0) return null;
+  const stillWaiting = [...new Set(ledger.puzzles.flatMap((p) => p.askingPlayerIds))]
+    .map((id) => ledger.nameOf(id))
+    .filter((n): n is string => !!n);
 
-  return {
-    title: 'Who fed the ledger',
-    body: `${name} published ${topCount} fragment${topCount === 1 ? '' : 's'} to the room — more than anyone `
-      + 'else. Every one of those helped whoever was racing them for a seat. Worth asking what that cost.',
-  };
+  const sentences: string[] = [];
+  if (counts.size > 0) {
+    const [topId, topCount] = [...counts.entries()].sort((a, b) => b[1] - a[1])[0];
+    const name = ledger.nameOf(topId);
+    if (name && topCount > 0) {
+      sentences.push(
+        `${name} published ${topCount} fragment${topCount === 1 ? '' : 's'} to the room — more than anyone `
+          + 'else. Every one of those helped whoever was racing them for a seat.',
+      );
+    }
+  }
+  if (stillWaiting.length > 0) {
+    sentences.push(`${joinNames(stillWaiting)} asked the room for a fragment and never got one.`);
+  }
+  if (sentences.length === 0) return null;
+
+  return { title: 'Who fed the ledger', body: sentences.join(' ') };
 }
 
 /**

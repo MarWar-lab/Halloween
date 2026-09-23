@@ -62,8 +62,8 @@ it('names the biggest publisher to the ledger, as a fourth prompt', () => {
   const names: Record<string, string> = { p1: 'Priya', p2: 'Sam' };
   const ledger = {
     puzzles: [
-      { posted: [{ playerId: 'p1' }, { playerId: 'p1' }, { playerId: 'p2' }] },
-      { posted: [{ playerId: 'p1' }] },
+      { posted: [{ playerId: 'p1' }, { playerId: 'p1' }, { playerId: 'p2' }], askingPlayerIds: [] },
+      { posted: [{ playerId: 'p1' }], askingPlayerIds: [] },
     ],
     nameOf: (id: string) => names[id],
   };
@@ -72,9 +72,47 @@ it('names the biggest publisher to the ledger, as a fourth prompt', () => {
   expect(ledgerPrompt?.body).toContain('Priya published 3 fragments');
 });
 
-it('says nothing about the ledger when nobody ever posted', () => {
-  const ledger = { puzzles: [{ posted: [] }], nameOf: () => undefined };
+it('says nothing about the ledger when nobody ever posted or asked', () => {
+  const ledger = { puzzles: [{ posted: [], askingPlayerIds: [] }], nameOf: () => undefined };
   expect(buildDebrief([ans('a', 0, 1)], ledger).some((p) => p.title === 'Who fed the ledger')).toBe(false);
+});
+
+it('names whoever is still waiting on an unanswered ask, even if nobody ever posted', () => {
+  const names: Record<string, string> = { dev: 'Dev' };
+  const ledger = {
+    puzzles: [{ posted: [], askingPlayerIds: ['dev'] }],
+    nameOf: (id: string) => names[id],
+  };
+  const prompts = buildDebrief([ans('a', 0, 1)], ledger);
+  const ledgerPrompt = prompts.find((p) => p.title === 'Who fed the ledger');
+  expect(ledgerPrompt?.body).toContain('Dev asked the room for a fragment and never got one.');
+});
+
+it('reports both facts together when both are true of the same night', () => {
+  const names: Record<string, string> = { priya: 'Priya', dev: 'Dev' };
+  const ledger = {
+    puzzles: [
+      { posted: [{ playerId: 'priya' }], askingPlayerIds: [] },
+      { posted: [], askingPlayerIds: ['dev'] },
+    ],
+    nameOf: (id: string) => names[id],
+  };
+  const body = buildDebrief([ans('a', 0, 1)], ledger).find((p) => p.title === 'Who fed the ledger')?.body;
+  expect(body).toContain('Priya published 1 fragment');
+  expect(body).toContain('Dev asked the room for a fragment and never got one.');
+});
+
+it("never double-counts someone still asking across more than one berth", () => {
+  const ledger = {
+    puzzles: [
+      { posted: [], askingPlayerIds: ['dev'] },
+      { posted: [], askingPlayerIds: ['dev'] },
+    ],
+    nameOf: () => 'Dev',
+  };
+  const body = buildDebrief([ans('a', 0, 1)], ledger).find((p) => p.title === 'Who fed the ledger')?.body;
+  // "Dev" named once, not "Dev and Dev" — the join list is deduplicated by player.
+  expect(body?.match(/Dev/g)).toHaveLength(1);
 });
 
 it('never mentions the ledger at all when the caller has no puzzle data', () => {
@@ -90,7 +128,7 @@ it('adds the ledger prompt as a fourth slot rather than displacing the other thr
     ans('a', 3, 0), ans('b', 3, 0), ans('c', 3, 1),
   ];
   const ledger = {
-    puzzles: [{ posted: [{ playerId: 'a' }] }],
+    puzzles: [{ posted: [{ playerId: 'a' }], askingPlayerIds: [] }],
     nameOf: () => 'Someone',
   };
   const withLedger = buildDebrief(answers, ledger);
@@ -149,7 +187,7 @@ it('adds the team prompt as a fifth slot alongside the ledger prompt, displacing
     ans('a', 1, 3), ans('b', 1, 3), ans('c', 1, 3),
     ans('a', 3, 0), ans('b', 3, 0), ans('c', 3, 1),
   ];
-  const ledger = { puzzles: [{ posted: [{ playerId: 'a' }] }], nameOf: () => 'Someone' };
+  const ledger = { puzzles: [{ posted: [{ playerId: 'a' }], askingPlayerIds: [] }], nameOf: () => 'Someone' };
   const team = {
     teams: [{ id: 't1', memberIds: ['a'] }, { id: 't2', memberIds: ['b'] }],
     ruthless: [{ playerId: 'a', marks: 1 }, { playerId: 'b', marks: 0 }],

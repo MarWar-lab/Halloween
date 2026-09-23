@@ -341,8 +341,9 @@ function KeyReveal({ snapshot }: { snapshot: Snapshot }) {
  * actually did — not a fixed script. See src/survival/debrief.ts for why
  * the first three need no new data: it is the same public per-round tally
  * the live reveal already showed, just kept for all nine rounds instead of
- * one. The ledger prompt reads `puzzles[].posted`, which has been public
- * since the moment each fragment was published — never anything still held.
+ * one. The ledger prompt reads `puzzles[].posted` (public the moment it's
+ * published) and `puzzles[].askingPlayerIds` (public live, in the Exchange
+ * itself) — never anything still held, and never who solved what for whom.
  * The team prompt reads `teams` and `ruthless`, both public by this same
  * gate; never a survival percentage, which stays sealed at every phase.
  */
